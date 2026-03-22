@@ -21,8 +21,10 @@ import { createDefaultAdmin } from './config/defaultAdmin.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-dotenv.config();
+// Force load .env from the correct location
+dotenv.config({ path: path.join(__dirname, '.env') });
 
+console.log('🔑 GROQ_API_KEY loaded:', process.env.GROQ_API_KEY ? '✅ YES' : '❌ NO');
 // Connect to MongoDB
 connectDB().then(() => {
   createDefaultAdmin();

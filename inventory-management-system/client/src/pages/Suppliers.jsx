@@ -10,8 +10,7 @@ import {
   FileText,
   Eye,
   Filter,
-  X,
-  ChevronDown
+  X
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -19,57 +18,70 @@ import SupplierModal from '../components/SupplierModal';
 
 const Suppliers = () => {
   const [suppliers, setSuppliers] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [categoryOptions, setCategoryOptions] = useState({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [selectedCategories, setSelectedCategories] = useState([]);
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState(null);
   const [viewingSupplier, setViewingSupplier] = useState(null);
+  const [categories, setCategories] = useState([]);
 
   useEffect(() => {
     fetchSuppliers();
   }, []);
 
   const fetchSuppliers = async () => {
+    setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const { data } = await axios.get('http://localhost:5000/api/suppliers', {
+      console.log('Fetching suppliers with token:', token ? 'Yes' : 'No');
+      
+      const response = await axios.get('http://localhost:5000/api/suppliers', {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      // Handle the response structure
-      if (Array.isArray(data)) {
-        setSuppliers(data);
-      } else if (data.suppliers) {
-        setSuppliers(data.suppliers || []);
-        setCategories(data.categories || []);
-        setCategoryOptions(data.categoryOptions || {});
+      console.log('Suppliers response:', response.data);
+      
+      // Handle response
+      if (Array.isArray(response.data)) {
+        setSuppliers(response.data);
+      } else if (response.data.suppliers) {
+        setSuppliers(response.data.suppliers);
       } else {
         setSuppliers([]);
       }
+      
     } catch (error) {
       console.error('Failed to fetch suppliers:', error);
-      toast.error('Failed to fetch suppliers');
+      console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
+      
+      if (error.response?.status === 401) {
+        toast.error('Please login again');
+      } else if (error.response?.status === 500) {
+        toast.error('Server error. Please check backend console for details.');
+      } else {
+        toast.error('Failed to fetch suppliers');
+      }
       setSuppliers([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Toggle category selection for filtering
-  const toggleCategoryFilter = (category) => {
-    if (selectedCategories.includes(category)) {
-      setSelectedCategories(selectedCategories.filter(c => c !== category));
-    } else {
-      setSelectedCategories([...selectedCategories, category]);
-    }
+  // Get unique categories from suppliers
+  const getCategories = () => {
+    const cats = new Set();
+    suppliers.forEach(supplier => {
+      supplier.categories?.forEach(cat => {
+        if (cat.mainCategory) cats.add(cat.mainCategory);
+      });
+    });
+    return Array.from(cats);
   };
 
-  // Safely filter suppliers
-  const filteredSuppliers = Array.isArray(suppliers) ? suppliers.filter(supplier => {
+  const filteredSuppliers = suppliers.filter(supplier => {
     const matchesSearch = 
       (supplier.name?.toLowerCase() || '').includes(search.toLowerCase()) ||
       (supplier.email?.toLowerCase() || '').includes(search.toLowerCase()) ||
@@ -78,19 +90,19 @@ const Suppliers = () => {
     
     const matchesStatus = statusFilter === 'all' || supplier.status === statusFilter;
     
-    // Check if supplier has any of the selected categories
-    const matchesCategories = selectedCategories.length === 0 || 
-      (supplier.categories && supplier.categories.some(cat => 
-        selectedCategories.includes(cat.mainCategory)
-      ));
+    const matchesCategory = categoryFilter === 'all' || 
+      (supplier.categories && supplier.categories.some(c => c.mainCategory === categoryFilter));
     
-    return matchesSearch && matchesStatus && matchesCategories;
-  }) : [];
+    return matchesSearch && matchesStatus && matchesCategory;
+  });
 
-  // Get all unique main categories from suppliers for filter
-  const allMainCategories = [...new Set(
-    suppliers.flatMap(s => s.categories?.map(c => c.mainCategory) || [])
-  )].filter(Boolean);
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+    );
+  }
 
   return (
     <motion.div
@@ -117,21 +129,20 @@ const Suppliers = () => {
       </div>
 
       {/* Search and Filters */}
-      <div className="bg-white rounded-xl shadow-sm p-4 space-y-4">
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-          <input
-            type="text"
-            placeholder="Search by name, email, GST, or phone..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-          />
-        </div>
-
-        {/* Filters Row */}
+      <div className="bg-white rounded-xl shadow-sm p-4">
         <div className="flex flex-wrap gap-4">
+          <div className="flex-1 min-w-[200px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <input
+                type="text"
+                placeholder="Search by name, email, GST, or phone..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+          </div>
           <div className="w-48">
             <select
               value={statusFilter}
@@ -143,174 +154,139 @@ const Suppliers = () => {
               <option value="Inactive">Inactive</option>
             </select>
           </div>
-
-          {/* Category Filter Dropdown */}
-          <div className="relative group">
-            <button className="px-4 py-2 border rounded-lg flex items-center space-x-2 hover:bg-gray-50">
-              <span>Categories</span>
-              <ChevronDown size={16} />
-              {selectedCategories.length > 0 && (
-                <span className="bg-primary-100 text-primary-600 text-xs px-2 py-0.5 rounded-full">
-                  {selectedCategories.length}
-                </span>
-              )}
-            </button>
-            
-            {/* Dropdown Menu */}
-            <div className="absolute z-10 mt-1 w-64 bg-white border rounded-lg shadow-lg hidden group-hover:block hover:block">
-              <div className="p-2 max-h-60 overflow-y-auto">
-                {allMainCategories.length > 0 ? (
-                  allMainCategories.map(category => (
-                    <label key={category} className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={selectedCategories.includes(category)}
-                        onChange={() => toggleCategoryFilter(category)}
-                        className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                      />
-                      <span className="text-sm">{category}</span>
-                    </label>
-                  ))
-                ) : (
-                  <p className="text-sm text-gray-500 p-2">No categories available</p>
-                )}
-              </div>
-              {selectedCategories.length > 0 && (
-                <div className="border-t p-2">
-                  <button
-                    onClick={() => setSelectedCategories([])}
-                    className="text-xs text-primary-600 hover:text-primary-700"
-                  >
-                    Clear all
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Active Filters */}
-          {(search || statusFilter !== 'all' || selectedCategories.length > 0) && (
-            <button
-              onClick={() => {
-                setSearch('');
-                setStatusFilter('all');
-                setSelectedCategories([]);
-              }}
-              className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 flex items-center space-x-1"
+          <div className="w-48">
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
-              <X size={16} />
-              <span>Clear filters</span>
-            </button>
-          )}
+              <option value="all">All Categories</option>
+              {getCategories().map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
       {/* Suppliers Grid */}
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      {filteredSuppliers.length === 0 ? (
+        <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+          <Truck className="mx-auto text-gray-400" size={48} />
+          <h3 className="mt-4 text-lg font-medium text-gray-900">No suppliers found</h3>
+          <p className="mt-2 text-sm text-gray-500">
+            {search || statusFilter !== 'all' || categoryFilter !== 'all' 
+              ? 'Try adjusting your filters'
+              : 'Get started by adding your first supplier'}
+          </p>
+          {(search || statusFilter !== 'all' || categoryFilter !== 'all') && (
+            <button
+              onClick={() => {
+                setSearch('');
+                setStatusFilter('all');
+                setCategoryFilter('all');
+              }}
+              className="mt-4 text-primary-600 hover:text-primary-700"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
       ) : (
-        <>
-          {filteredSuppliers.length === 0 ? (
-            <div className="bg-white rounded-xl shadow-sm p-12 text-center">
-              <Truck className="mx-auto text-gray-400" size={48} />
-              <h3 className="mt-4 text-lg font-medium text-gray-900">No suppliers found</h3>
-              <p className="mt-2 text-sm text-gray-500">
-                {search || statusFilter !== 'all' || selectedCategories.length > 0 
-                  ? 'Try adjusting your filters'
-                  : 'Get started by adding your first supplier'}
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredSuppliers.map((supplier, index) => (
-                <motion.div
-                  key={supplier._id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-shadow"
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredSuppliers.map((supplier, index) => (
+            <motion.div
+              key={supplier._id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.05 }}
+              className="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center">
+                    <Truck className="text-primary-600" size={24} />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg">{supplier.name}</h3>
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      supplier.status === 'Active'
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-gray-100 text-gray-700'
+                    }`}>
+                      {supplier.status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2 mb-4">
+                <div className="flex items-center text-sm text-gray-600">
+                  <Mail size={16} className="mr-2 flex-shrink-0" />
+                  <span className="truncate">{supplier.email}</span>
+                </div>
+                <div className="flex items-center text-sm text-gray-600">
+                  <Phone size={16} className="mr-2 flex-shrink-0" />
+                  <span>{supplier.phone}</span>
+                </div>
+                <div className="flex items-center text-sm text-gray-600">
+                  <FileText size={16} className="mr-2 flex-shrink-0" />
+                  <span className="font-mono text-xs">{supplier.gst}</span>
+                </div>
+                {supplier.address && (
+                  <div className="flex items-start text-sm text-gray-600">
+                    <MapPin size={16} className="mr-2 mt-1 flex-shrink-0" />
+                    <span className="line-clamp-2">{supplier.address}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Categories */}
+              {supplier.categories && supplier.categories.length > 0 && (
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-xs font-medium text-gray-500 mb-2">CATEGORIES</p>
+                  <div className="flex flex-wrap gap-2">
+                    {supplier.categories.map((cat, idx) => (
+                      <span
+                        key={idx}
+                        className="px-3 py-1 bg-primary-50 text-primary-700 text-sm rounded-full"
+                      >
+                        {cat.mainCategory}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Payment Terms */}
+              {supplier.paymentTerms && (
+                <div className="mt-3 text-xs text-gray-500">
+                  Payment: {supplier.paymentTerms}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex space-x-2 mt-4">
+                <button
+                  onClick={() => setViewingSupplier(supplier)}
+                  className="flex-1 px-3 py-2 border rounded-lg text-primary-600 hover:bg-primary-50 flex items-center justify-center space-x-1"
                 >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center">
-                        <Truck className="text-primary-600" size={24} />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-lg">{supplier.name}</h3>
-                        <span className={`text-xs px-2 py-1 rounded-full ${
-                          supplier.status === 'Active'
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-gray-100 text-gray-700'
-                        }`}>
-                          {supplier.status}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center text-sm text-gray-600">
-                      <Mail size={16} className="mr-2 flex-shrink-0" />
-                      <span className="truncate">{supplier.email}</span>
-                    </div>
-                    <div className="flex items-center text-sm text-gray-600">
-                      <Phone size={16} className="mr-2 flex-shrink-0" />
-                      <span>{supplier.phone}</span>
-                    </div>
-                    <div className="flex items-center text-sm text-gray-600">
-                      <FileText size={16} className="mr-2 flex-shrink-0" />
-                      <span className="font-mono text-xs">{supplier.gst}</span>
-                    </div>
-                    {supplier.address && (
-                      <div className="flex items-start text-sm text-gray-600">
-                        <MapPin size={16} className="mr-2 mt-1 flex-shrink-0" />
-                        <span className="line-clamp-2">{supplier.address}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Categories - Simplified */}
-                  {supplier.categories && supplier.categories.length > 0 && (
-                    <div className="mt-4 pt-4 border-t">
-                      <p className="text-xs font-medium text-gray-500 mb-2">CATEGORIES</p>
-                      <div className="flex flex-wrap gap-2">
-                        {supplier.categories.map((cat, idx) => (
-                          <span
-                            key={idx}
-                            className="px-3 py-1 bg-primary-50 text-primary-700 text-sm rounded-full"
-                          >
-                            {cat.mainCategory}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {/* Actions */}
-                  <div className="flex space-x-2 mt-4">
-                    <button
-                      onClick={() => setViewingSupplier(supplier)}
-                      className="flex-1 px-3 py-2 border rounded-lg text-primary-600 hover:bg-primary-50 flex items-center justify-center space-x-1"
-                    >
-                      <Eye size={16} />
-                      <span>View</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditingSupplier(supplier);
-                        setIsModalOpen(true);
-                      }}
-                      className="px-3 py-2 border rounded-lg text-gray-600 hover:bg-gray-50"
-                    >
-                      Edit
-                    </button>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          )}
-        </>
+                  <Eye size={16} />
+                  <span>View</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingSupplier(supplier);
+                    setIsModalOpen(true);
+                  }}
+                  className="px-3 py-2 border rounded-lg text-gray-600 hover:bg-gray-50"
+                >
+                  Edit
+                </button>
+              </div>
+            </motion.div>
+          ))}
+        </div>
       )}
 
       {/* Modals */}
@@ -334,7 +310,7 @@ const Suppliers = () => {
   );
 };
 
-// Supplier Profile Modal Component - Simplified
+// Supplier Profile Modal Component
 const SupplierProfileModal = ({ supplier, onClose }) => {
   if (!supplier) return null;
 
@@ -380,7 +356,7 @@ const SupplierProfileModal = ({ supplier, onClose }) => {
             </div>
           </div>
 
-          {/* Categories - Simplified */}
+          {/* Categories */}
           {supplier.categories && supplier.categories.length > 0 && (
             <div className="mb-6">
               <h3 className="font-semibold text-lg mb-3">Categories</h3>
@@ -397,7 +373,7 @@ const SupplierProfileModal = ({ supplier, onClose }) => {
             </div>
           )}
 
-          {/* Bank Details - Optional */}
+          {/* Bank Details */}
           {supplier.bankDetails && (supplier.bankDetails.accountName || supplier.bankDetails.bankName) && (
             <div className="mb-6">
               <h3 className="font-semibold text-lg mb-3">Bank Details</h3>
