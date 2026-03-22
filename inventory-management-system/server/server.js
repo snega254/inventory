@@ -16,15 +16,14 @@ import chatRoutes from './routes/chatRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 import { createDefaultAdmin } from './config/defaultAdmin.js';
 
-
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Force load .env from the correct location
+// Load .env
 dotenv.config({ path: path.join(__dirname, '.env') });
 
 console.log('🔑 GROQ_API_KEY loaded:', process.env.GROQ_API_KEY ? '✅ YES' : '❌ NO');
+
 // Connect to MongoDB
 connectDB().then(() => {
   createDefaultAdmin();
@@ -32,13 +31,15 @@ connectDB().then(() => {
 
 const app = express();
 
-// Allowed origins
+// Allowed origins - ADD YOUR VERCEL URL HERE
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
   'http://localhost:5175',
   'http://127.0.0.1:5173',
-  'http://127.0.0.1:5174'
+  'http://127.0.0.1:5174',
+  'https://inventory-silk-mu.vercel.app',  // Add your Vercel URL
+  'https://inventory-git-main-snega254s-projects.vercel.app'  // Add alternative Vercel URL
 ];
 
 // CORS configuration
@@ -46,6 +47,7 @@ app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
     if (allowedOrigins.indexOf(origin) === -1) {
+      console.log('Blocked origin:', origin);
       const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
       return callback(new Error(msg), false);
     }
@@ -78,20 +80,18 @@ app.use('/api/sales', saleRoutes);
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/chat', chatRoutes);
-app.use('/api/upload', uploadRoutes); // Add upload routes
+app.use('/api/upload', uploadRoutes);
 
 // Test route
 app.get('/api/test', (req, res) => {
   res.json({ 
     status: 'ok', 
     message: 'Server is running',
-    timestamp: new Date().toISOString(),
-    uploadEndpoint: 'http://localhost:5000/api/upload',
-    uploadsUrl: 'http://localhost:5000/uploads/'
+    timestamp: new Date().toISOString()
   });
 });
 
-// 404 handler
+// 404 handler (should be LAST)
 app.use((req, res) => {
   res.status(404).json({ 
     message: 'Route not found',
@@ -113,7 +113,5 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Test endpoint: http://localhost:${PORT}/api/test`);
-  console.log(`Upload endpoint: http://localhost:${PORT}/api/upload`);
-  console.log(`Uploads directory: ${path.join(__dirname, 'uploads')}`);
   console.log(`Allowed origins: ${allowedOrigins.join(', ')}`);
 });
