@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Plus, Trash2, Upload, Image as ImageIcon } from 'lucide-react';
+import { X, Plus, Trash2, Upload } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
@@ -29,6 +29,7 @@ const ProductModal = ({ isOpen, onClose, product, onSuccess }) => {
 
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [fetchingSuppliers, setFetchingSuppliers] = useState(true);
   const [customColorInput, setCustomColorInput] = useState('');
   const [customSizeInput, setCustomSizeInput] = useState('');
@@ -67,6 +68,9 @@ const ProductModal = ({ isOpen, onClose, product, onSuccess }) => {
 
   useEffect(() => {
     fetchSuppliers();
+  }, []);
+
+  useEffect(() => {
     if (product) {
       // Find supplier name from suppliers list
       const supplierObj = suppliers.find(s => s._id === product.supplier);
@@ -91,7 +95,7 @@ const ProductModal = ({ isOpen, onClose, product, onSuccess }) => {
         ]
       });
     }
-  }, [product]);
+  }, [product, suppliers]);
 
   // Generate SKU in background
   useEffect(() => {
@@ -99,6 +103,15 @@ const ProductModal = ({ isOpen, onClose, product, onSuccess }) => {
       generateSku();
     }
   }, [formData.supplier, formData.name, formData.category]);
+
+  // Calculate profit
+  useEffect(() => {
+    const totalQuantity = formData.colorVariants.reduce((total, variant) => 
+      total + variant.sizes.reduce((sum, size) => sum + (size.quantity || 0), 0), 0
+    );
+    const profit = (formData.sellingPrice - formData.purchasePrice) * totalQuantity;
+    setFormData(prev => ({ ...prev, profit }));
+  }, [formData.purchasePrice, formData.sellingPrice, formData.colorVariants]);
 
   const fetchSuppliers = async () => {
     try {
@@ -151,15 +164,53 @@ const ProductModal = ({ isOpen, onClose, product, onSuccess }) => {
     }
   };
 
-  // Calculate profit
-  useEffect(() => {
-    const totalQuantity = formData.colorVariants.reduce((total, variant) => 
-      total + variant.sizes.reduce((sum, size) => sum + (size.quantity || 0), 0), 0
-    );
-    const profit = (formData.sellingPrice - formData.purchasePrice) * totalQuantity;
-    setFormData(prev => ({ ...prev, profit }));
-  }, [formData.purchasePrice, formData.sellingPrice, formData.colorVariants]);
+  // Image upload function
+  const uploadImages = async (variantIndex, files) => {
+    const uploadFormData = new FormData();
+    Array.from(files).forEach(file => {
+      uploadFormData.append('images', file);
+    });
 
+    setUploading(true);
+    try {
+      const token = localStorage.getItem('token');
+      
+      const { data } = await axios.post('http://localhost:5000/api/upload', uploadFormData, {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      // Update the variant with new image URLs
+      setFormData(prev => {
+        const updatedVariants = [...prev.colorVariants];
+        updatedVariants[variantIndex] = {
+          ...updatedVariants[variantIndex],
+          images: [...updatedVariants[variantIndex].images, ...data.urls]
+        };
+        return { ...prev, colorVariants: updatedVariants };
+      });
+      
+      toast.success('Images uploaded successfully');
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Failed to upload images');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Handle image upload
+  const handleImageUpload = async (variantIndex, event) => {
+    const files = event.target.files;
+    if (files.length > 0) {
+      await uploadImages(variantIndex, files);
+      event.target.value = null;
+    }
+  };
+
+  // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -241,54 +292,61 @@ const ProductModal = ({ isOpen, onClose, product, onSuccess }) => {
     }
   };
 
-  // Image upload functions
-  const handleImageUpload = (variantIndex, event) => {
-    const files = Array.from(event.target.files);
-    // Here you would upload to server and get URLs
-    // For now, we'll create object URLs for preview
-    const imageUrls = files.map(file => URL.createObjectURL(file));
-    
-    const updatedVariants = [...formData.colorVariants];
-    updatedVariants[variantIndex].images = [
-      ...updatedVariants[variantIndex].images,
-      ...imageUrls
-    ];
-    setFormData({ ...formData, colorVariants: updatedVariants });
-  };
-
   const removeImage = (variantIndex, imageIndex) => {
-    const updatedVariants = [...formData.colorVariants];
-    updatedVariants[variantIndex].images.splice(imageIndex, 1);
-    setFormData({ ...formData, colorVariants: updatedVariants });
+    setFormData(prev => {
+      const updatedVariants = [...prev.colorVariants];
+      updatedVariants[variantIndex] = {
+        ...updatedVariants[variantIndex],
+        images: updatedVariants[variantIndex].images.filter((_, i) => i !== imageIndex)
+      };
+      return { ...prev, colorVariants: updatedVariants };
+    });
   };
 
   // Size management functions
   const addSize = (variantIndex) => {
     if (customSizeInput.trim()) {
-      const updatedVariants = [...formData.colorVariants];
-      updatedVariants[variantIndex].sizes.push({
-        size: customSizeInput.trim(),
-        quantity: 0,
-        minStock: 1
+      setFormData(prev => {
+        const updatedVariants = [...prev.colorVariants];
+        updatedVariants[variantIndex] = {
+          ...updatedVariants[variantIndex],
+          sizes: [...updatedVariants[variantIndex].sizes, {
+            size: customSizeInput.trim(),
+            quantity: 0,
+            minStock: 1
+          }]
+        };
+        return { ...prev, colorVariants: updatedVariants };
       });
-      setFormData({ ...formData, colorVariants: updatedVariants });
       setCustomSizeInput('');
       setSelectedVariantForSize(null);
     }
   };
 
   const removeSize = (variantIndex, sizeIndex) => {
-    if (formData.colorVariants[variantIndex].sizes.length > 1) {
-      const updatedVariants = [...formData.colorVariants];
-      updatedVariants[variantIndex].sizes.splice(sizeIndex, 1);
-      setFormData({ ...formData, colorVariants: updatedVariants });
-    }
+    setFormData(prev => {
+      const updatedVariants = [...prev.colorVariants];
+      if (updatedVariants[variantIndex].sizes.length > 1) {
+        updatedVariants[variantIndex] = {
+          ...updatedVariants[variantIndex],
+          sizes: updatedVariants[variantIndex].sizes.filter((_, i) => i !== sizeIndex)
+        };
+      }
+      return { ...prev, colorVariants: updatedVariants };
+    });
   };
 
   const updateSizeQuantity = (variantIndex, sizeIndex, field, value) => {
-    const updatedVariants = [...formData.colorVariants];
-    updatedVariants[variantIndex].sizes[sizeIndex][field] = Number(value);
-    setFormData({ ...formData, colorVariants: updatedVariants });
+    setFormData(prev => {
+      const updatedVariants = [...prev.colorVariants];
+      updatedVariants[variantIndex] = {
+        ...updatedVariants[variantIndex],
+        sizes: updatedVariants[variantIndex].sizes.map((size, i) => 
+          i === sizeIndex ? { ...size, [field]: Number(value) } : size
+        )
+      };
+      return { ...prev, colorVariants: updatedVariants };
+    });
   };
 
   const handleSupplierChange = (e) => {
@@ -401,7 +459,7 @@ const ProductModal = ({ isOpen, onClose, product, onSuccess }) => {
                   disabled={!formData.category}
                 >
                   <option value="">Select Sub Category</option>
-                  {formData.category && formData.category === 'Shirts' && [
+                  {formData.category === 'Shirts' && [
                     'Linen', 'Embroidery', 'Flannel', 'Viscose', 'Designer',
                     'Mandarin collar', 'Oxford', 'Double pocket', 'Corduroy',
                     'Stained', 'Drop shoulder', 'Oversized'
@@ -556,23 +614,49 @@ const ProductModal = ({ isOpen, onClose, product, onSuccess }) => {
                   <div>
                     <label className="block text-xs text-gray-500 mb-2">Product Images</label>
                     <div className="flex flex-wrap gap-2 mb-2">
-                      {variant.images.map((img, imgIndex) => (
-                        <div key={imgIndex} className="relative">
-                          <img 
-                            src={img} 
-                            alt={`Product ${imgIndex + 1}`} 
-                            className="w-16 h-16 object-cover rounded-lg border"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removeImage(vIndex, imgIndex)}
-                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5"
-                          >
-                            <X size={12} />
-                          </button>
-                        </div>
-                      ))}
-                      <label className="w-16 h-16 border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer hover:bg-gray-50">
+                      {variant.images && variant.images.map((img, imgIndex) => {
+                        const imageSrc = img.startsWith('http') 
+                          ? img 
+                          : `http://localhost:5000/uploads/products/${img}`;
+                        
+                        return (
+                          <div key={imgIndex} className="relative">
+                            <div className="w-16 h-16 rounded-lg border overflow-hidden bg-gray-100">
+                              <img 
+                                src={imageSrc}
+                                alt={`Product ${imgIndex + 1}`} 
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  const target = e.target;
+                                  target.style.display = 'none';
+                                  const parent = target.parentNode;
+                                  if (parent) {
+                                    parent.innerHTML = `
+                                      <div class="w-full h-full flex items-center justify-center bg-gray-100">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                          <rect width="24" height="24" fill="#e5e7eb"/>
+                                          <path d="M8 12L11 15L16 9" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
+                                          <circle cx="17" cy="7" r="1" fill="#9ca3af"/>
+                                        </svg>
+                                      </div>
+                                    `;
+                                  }
+                                }}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeImage(vIndex, imgIndex)}
+                              className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                      
+                      {/* Upload button */}
+                      <label className="w-16 h-16 border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer hover:bg-gray-50 relative">
                         <input
                           type="file"
                           multiple
@@ -580,7 +664,11 @@ const ProductModal = ({ isOpen, onClose, product, onSuccess }) => {
                           onChange={(e) => handleImageUpload(vIndex, e)}
                           className="hidden"
                         />
-                        <Upload size={20} className="text-gray-400" />
+                        {uploading ? (
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600"></div>
+                        ) : (
+                          <Upload size={20} className="text-gray-400" />
+                        )}
                       </label>
                     </div>
                   </div>
@@ -646,7 +734,7 @@ const ProductModal = ({ isOpen, onClose, product, onSuccess }) => {
                             <input
                               type="number"
                               value={size.quantity}
-                              onChange={(e) => updateSizeQuantity(vIndex, sIndex, 'quantity', e.target.value)}
+                              onChange={(e) => updateSizeQuantity(vIndex, sIndex, 'quantity', Number(e.target.value))}
                               className="w-full px-2 py-1 border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-primary-500"
                               placeholder="Qty"
                               min="0"
@@ -654,7 +742,7 @@ const ProductModal = ({ isOpen, onClose, product, onSuccess }) => {
                             <input
                               type="number"
                               value={size.minStock}
-                              onChange={(e) => updateSizeQuantity(vIndex, sIndex, 'minStock', e.target.value)}
+                              onChange={(e) => updateSizeQuantity(vIndex, sIndex, 'minStock', Number(e.target.value))}
                               className="w-full px-2 py-1 border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-primary-500"
                               placeholder="Min"
                               min="1"

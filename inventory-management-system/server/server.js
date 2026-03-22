@@ -4,14 +4,22 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import connectDB from './config/db.js';
-import authRoutes from './routes/authRoutes.js'; // Make sure this import is correct
+import authRoutes from './routes/authRoutes.js';
 import productRoutes from './routes/productRoutes.js';
 import saleRoutes from './routes/saleRoutes.js';
 import supplierRoutes from './routes/supplierRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
+import uploadRoutes from './routes/uploadRoutes.js';
 import { createDefaultAdmin } from './config/defaultAdmin.js';
+
+
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
@@ -58,54 +66,26 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-// Routes - Make sure these are correctly mounted
-app.use('/api/auth', authRoutes); // This should handle /api/auth/login
+// Serve static files from uploads directory
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/sales', saleRoutes);
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/upload', uploadRoutes); // Add upload routes
 
-// Test route to list all available endpoints
+// Test route
 app.get('/api/test', (req, res) => {
-  const routes = [];
-  
-  // Get all registered routes
-  app._router.stack.forEach((middleware) => {
-    if (middleware.route) {
-      // Routes registered directly
-      const methods = Object.keys(middleware.route.methods).join(', ').toUpperCase();
-      routes.push({
-        path: middleware.route.path,
-        methods: methods
-      });
-    } else if (middleware.name === 'router') {
-      // Routes registered with router
-      middleware.handle.stack.forEach((handler) => {
-        if (handler.route) {
-          const path = handler.route.path;
-          const methods = Object.keys(handler.route.methods).join(', ').toUpperCase();
-          const fullPath = middleware.regexp.source
-            .replace('\\/?(?=\\/|$)', '')
-            .replace(/\\\//g, '/')
-            .replace(/\^/g, '')
-            .replace(/\?/g, '');
-          
-          routes.push({
-            path: fullPath + path,
-            methods: methods
-          });
-        }
-      });
-    }
-  });
-
   res.json({ 
     status: 'ok', 
     message: 'Server is running',
     timestamp: new Date().toISOString(),
-    allowedOrigins: allowedOrigins,
-    registeredRoutes: routes
+    uploadEndpoint: 'http://localhost:5000/api/upload',
+    uploadsUrl: 'http://localhost:5000/uploads/'
   });
 });
 
@@ -113,8 +93,7 @@ app.get('/api/test', (req, res) => {
 app.use((req, res) => {
   res.status(404).json({ 
     message: 'Route not found',
-    path: req.originalUrl,
-    method: req.method
+    path: req.originalUrl
   });
 });
 
@@ -130,7 +109,9 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-  console.log(`📡 Test endpoint: http://localhost:${PORT}/api/test`);
-  console.log(`🔧 Allowed origins: ${allowedOrigins.join(', ')}`);
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Test endpoint: http://localhost:${PORT}/api/test`);
+  console.log(`Upload endpoint: http://localhost:${PORT}/api/upload`);
+  console.log(`Uploads directory: ${path.join(__dirname, 'uploads')}`);
+  console.log(`Allowed origins: ${allowedOrigins.join(', ')}`);
 });

@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   BarChart3,
-  PieChart,
   TrendingUp,
   Package,
   IndianRupee,
   ShoppingBag,
-  Users
+  Users,
+  Calendar,
+  DollarSign,
+  Activity
 } from 'lucide-react';
 import {
   BarChart,
@@ -35,9 +37,11 @@ const Analytics = () => {
   const [monthlyRevenue, setMonthlyRevenue] = useState([]);
   const [summary, setSummary] = useState({
     totalRevenue: 0,
+    totalProfit: 0,
     totalProducts: 0,
     totalSales: 0,
-    avgOrderValue: 0
+    avgOrderValue: 0,
+    profitMargin: 0
   });
 
   useEffect(() => {
@@ -64,6 +68,7 @@ const Analytics = () => {
       // Process data for analytics
       processAnalyticsData(sales, products);
     } catch (error) {
+      console.error('Analytics error:', error);
       toast.error('Failed to fetch analytics data');
     } finally {
       setLoading(false);
@@ -71,23 +76,52 @@ const Analytics = () => {
   };
 
   const processAnalyticsData = (sales, products) => {
-    // Calculate summary
-    const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
+    // Create product lookup map for profit calculation
+    const productMap = new Map();
+    products.forEach(product => {
+      productMap.set(product._id.toString(), product);
+    });
+
+    // Calculate summary with profit
+    let totalRevenue = 0;
+    let totalProfit = 0;
+    let totalItems = 0;
+
+    sales.forEach(sale => {
+      totalRevenue += sale.total || 0;
+      
+      // Calculate profit for this sale
+      sale.items?.forEach(item => {
+        const product = productMap.get(item.product?.toString());
+        if (product) {
+          const purchasePrice = product.purchasePrice || 0;
+          const sellingPrice = item.price || 0;
+          const quantity = item.quantity || 0;
+          totalProfit += (sellingPrice - purchasePrice) * quantity;
+          totalItems += quantity;
+        }
+      });
+    });
+
     const totalSales = sales.length;
     const avgOrderValue = totalSales > 0 ? totalRevenue / totalSales : 0;
+    const profitMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
     setSummary({
       totalRevenue,
+      totalProfit,
       totalProducts: products.length,
       totalSales,
-      avgOrderValue
+      avgOrderValue,
+      profitMargin
     });
 
     // Process category distribution
     const categoryMap = new Map();
     products.forEach(product => {
-      const count = categoryMap.get(product.category) || 0;
-      categoryMap.set(product.category, count + 1);
+      const category = product.category || 'Uncategorized';
+      const count = categoryMap.get(category) || 0;
+      categoryMap.set(category, count + 1);
     });
     
     const categoryData = Array.from(categoryMap.entries()).map(([name, value]) => ({
@@ -96,32 +130,68 @@ const Analytics = () => {
     }));
     setCategoryData(categoryData);
 
-    // Process top products by revenue
-    const productRevenue = new Map();
+    // Process top products by profit
+    const productProfitMap = new Map();
     sales.forEach(sale => {
-      sale.items.forEach(item => {
-        const revenue = productRevenue.get(item.productName) || 0;
-        productRevenue.set(item.productName, revenue + (item.price * item.quantity));
+      sale.items?.forEach(item => {
+        const product = productMap.get(item.product?.toString());
+        if (product) {
+          const productName = item.productName || 'Unknown';
+          const purchasePrice = product.purchasePrice || 0;
+          const sellingPrice = item.price || 0;
+          const quantity = item.quantity || 0;
+          const profit = (sellingPrice - purchasePrice) * quantity;
+          const revenue = sellingPrice * quantity;
+          
+          const existing = productProfitMap.get(productName) || { profit: 0, revenue: 0 };
+          productProfitMap.set(productName, {
+            profit: existing.profit + profit,
+            revenue: existing.revenue + revenue
+          });
+        }
       });
     });
 
-    const topProductsData = Array.from(productRevenue.entries())
-      .map(([name, revenue]) => ({ name, revenue }))
-      .sort((a, b) => b.revenue - a.revenue)
+    const topProductsData = Array.from(productProfitMap.entries())
+      .map(([name, data]) => ({ 
+        name, 
+        profit: data.profit,
+        revenue: data.revenue 
+      }))
+      .sort((a, b) => b.profit - a.profit)
       .slice(0, 5);
     setTopProducts(topProductsData);
 
-    // Process monthly revenue
+    // Process monthly revenue with profit
     const monthlyMap = new Map();
     sales.forEach(sale => {
       const date = new Date(sale.createdAt);
       const monthYear = `${date.toLocaleString('default', { month: 'short' })} ${date.getFullYear()}`;
-      const revenue = monthlyMap.get(monthYear) || 0;
-      monthlyMap.set(monthYear, revenue + sale.total);
+      
+      let saleProfit = 0;
+      sale.items?.forEach(item => {
+        const product = productMap.get(item.product?.toString());
+        if (product) {
+          const purchasePrice = product.purchasePrice || 0;
+          const sellingPrice = item.price || 0;
+          const quantity = item.quantity || 0;
+          saleProfit += (sellingPrice - purchasePrice) * quantity;
+        }
+      });
+
+      const existing = monthlyMap.get(monthYear) || { revenue: 0, profit: 0 };
+      monthlyMap.set(monthYear, {
+        revenue: existing.revenue + (sale.total || 0),
+        profit: existing.profit + saleProfit
+      });
     });
 
     const monthlyData = Array.from(monthlyMap.entries())
-      .map(([month, revenue]) => ({ month, revenue }))
+      .map(([month, data]) => ({ 
+        month, 
+        revenue: data.revenue,
+        profit: data.profit
+      }))
       .sort((a, b) => {
         const dateA = new Date(a.month);
         const dateB = new Date(b.month);
@@ -129,7 +199,7 @@ const Analytics = () => {
       });
     setMonthlyRevenue(monthlyData);
 
-    // Process sales performance by day
+    // Process sales performance by day (last 30 days)
     const last30Days = [];
     for (let i = 29; i >= 0; i--) {
       const date = new Date();
@@ -139,18 +209,48 @@ const Analytics = () => {
 
     const dailySales = last30Days.map(date => {
       const daySales = sales.filter(sale => 
-        sale.createdAt.split('T')[0] === date
+        sale.createdAt?.split('T')[0] === date
       );
-      const revenue = daySales.reduce((sum, sale) => sum + sale.total, 0);
+      
+      let dayRevenue = 0;
+      let dayProfit = 0;
+      
+      daySales.forEach(sale => {
+        dayRevenue += sale.total || 0;
+        sale.items?.forEach(item => {
+          const product = productMap.get(item.product?.toString());
+          if (product) {
+            const purchasePrice = product.purchasePrice || 0;
+            const sellingPrice = item.price || 0;
+            const quantity = item.quantity || 0;
+            dayProfit += (sellingPrice - purchasePrice) * quantity;
+          }
+        });
+      });
+      
       return {
         date,
-        revenue
+        displayDate: new Date(date).toLocaleDateString('en-IN', { 
+          day: '2-digit', 
+          month: 'short'
+        }),
+        revenue: dayRevenue,
+        profit: dayProfit
       };
     });
     setSalesData(dailySales);
   };
 
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+  const formatCurrency = (value) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(value);
+  };
 
   if (loading) {
     return (
@@ -168,78 +268,14 @@ const Analytics = () => {
     >
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-800">Analytics Dashboard</h1>
-        <div className="flex items-center space-x-2 text-sm text-gray-500">
-          <BarChart3 size={18} />
-          <span>Last 30 days</span>
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-800">Analytics Dashboard</h1>
+          <p className="text-sm text-gray-500 mt-1">Last 30 days performance</p>
         </div>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="bg-white rounded-xl shadow-sm p-6"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-              <IndianRupee className="text-blue-600" size={24} />
-            </div>
-            <span className="text-sm text-gray-500">Total Revenue</span>
-          </div>
-          <p className="text-2xl font-bold">₹{summary.totalRevenue.toLocaleString()}</p>
-          <p className="text-sm text-gray-500 mt-2">This Month</p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-white rounded-xl shadow-sm p-6"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-              <ShoppingBag className="text-green-600" size={24} />
-            </div>
-            <span className="text-sm text-gray-500">Today's Sales</span>
-          </div>
-          <p className="text-2xl font-bold">₹{salesData[salesData.length - 1]?.revenue || 0}</p>
-          <p className="text-sm text-gray-500 mt-2">Today</p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="bg-white rounded-xl shadow-sm p-6"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-              <Package className="text-purple-600" size={24} />
-            </div>
-            <span className="text-sm text-gray-500">Total Products</span>
-          </div>
-          <p className="text-2xl font-bold">{summary.totalProducts}</p>
-          <p className="text-sm text-gray-500 mt-2">In Inventory</p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="bg-white rounded-xl shadow-sm p-6"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-              <Users className="text-yellow-600" size={24} />
-            </div>
-            <span className="text-sm text-gray-500">Avg Order Value</span>
-          </div>
-          <p className="text-2xl font-bold">₹{summary.avgOrderValue.toFixed(2)}</p>
-          <p className="text-sm text-gray-500 mt-2">Per Transaction</p>
-        </motion.div>
+        <div className="flex items-center space-x-2 text-sm bg-blue-50 px-3 py-1 rounded-full">
+          <Calendar size={16} className="text-blue-600" />
+          <span className="text-blue-600 font-medium">Last 30 Days</span>
+        </div>
       </div>
 
       {/* Sales Performance Chart */}
@@ -247,33 +283,45 @@ const Analytics = () => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
-        className="bg-white rounded-xl shadow-sm p-6"
+        className="bg-white rounded-xl shadow-lg p-6"
       >
-        <h2 className="text-lg font-semibold mb-4">Sales Performance</h2>
+        <h2 className="text-lg font-semibold mb-4">Revenue & Profit Trend</h2>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={salesData}>
-              <CartesianGrid strokeDasharray="3 3" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis 
-                dataKey="date" 
-                tickFormatter={(date) => {
-                  const d = new Date(date);
-                  return `${d.getDate()}/${d.getMonth() + 1}`;
-                }}
+                dataKey="displayDate" 
+                tick={{ fontSize: 12 }}
+                interval={Math.floor(salesData.length / 8)}
               />
-              <YAxis />
+              <YAxis yAxisId="left" orientation="left" stroke="#3b82f6" />
+              <YAxis yAxisId="right" orientation="right" stroke="#10b981" />
               <Tooltip 
-                formatter={(value) => [`₹${value}`, 'Revenue']}
-                labelFormatter={(label) => new Date(label).toLocaleDateString()}
+                formatter={(value, name) => [
+                  formatCurrency(value), 
+                  name === 'revenue' ? 'Revenue' : 'Profit'
+                ]}
+                labelFormatter={(label) => `Date: ${label}`}
               />
               <Legend />
               <Line 
+                yAxisId="left"
                 type="monotone" 
                 dataKey="revenue" 
                 stroke="#3b82f6" 
                 strokeWidth={2}
                 dot={false}
                 name="Revenue"
+              />
+              <Line 
+                yAxisId="right"
+                type="monotone" 
+                dataKey="profit" 
+                stroke="#10b981" 
+                strokeWidth={2}
+                dot={false}
+                name="Profit"
               />
             </LineChart>
           </ResponsiveContainer>
@@ -287,17 +335,17 @@ const Analytics = () => {
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.6 }}
-          className="bg-white rounded-xl shadow-sm p-6"
+          className="bg-white rounded-xl shadow-lg p-6"
         >
           <h2 className="text-lg font-semibold mb-4">Monthly Revenue</h2>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthlyRevenue}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                 <YAxis />
-                <Tooltip formatter={(value) => [`₹${value}`, 'Revenue']} />
-                <Bar dataKey="revenue" fill="#3b82f6" />
+                <Tooltip formatter={(value) => formatCurrency(value)} />
+                <Bar dataKey="revenue" fill="#3b82f6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -308,7 +356,7 @@ const Analytics = () => {
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.7 }}
-          className="bg-white rounded-xl shadow-sm p-6"
+          className="bg-white rounded-xl shadow-lg p-6"
         >
           <h2 className="text-lg font-semibold mb-4">Category Distribution</h2>
           <div className="h-64">
@@ -334,26 +382,34 @@ const Analytics = () => {
           </div>
         </motion.div>
 
-        {/* Top Products */}
+        {/* Top Products by Profit */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.8 }}
-          className="bg-white rounded-xl shadow-sm p-6"
+          className="bg-white rounded-xl shadow-lg p-6"
         >
-          <h2 className="text-lg font-semibold mb-4">Top Products by Revenue</h2>
+          <h2 className="text-lg font-semibold mb-4">Top Products by Profit</h2>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={topProducts}
                 layout="vertical"
-                margin={{ left: 100 }}
+                margin={{ left: 80, right: 20 }}
               >
-                <CartesianGrid strokeDasharray="3 3" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis type="number" />
-                <YAxis type="category" dataKey="name" />
-                <Tooltip formatter={(value) => [`₹${value}`, 'Revenue']} />
-                <Bar dataKey="revenue" fill="#10b981" />
+                <YAxis 
+                  type="category" 
+                  dataKey="name" 
+                  width={80}
+                  tick={{ fontSize: 12 }}
+                />
+                <Tooltip 
+                  formatter={(value) => formatCurrency(value)}
+                  cursor={{ fill: '#f0f0f0' }}
+                />
+                <Bar dataKey="profit" fill="#10b981" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -364,100 +420,54 @@ const Analytics = () => {
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.9 }}
-          className="bg-white rounded-xl shadow-sm p-6"
+          className="bg-white rounded-xl shadow-lg p-6"
         >
           <h2 className="text-lg font-semibold mb-4">Key Metrics</h2>
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                  <TrendingUp className="text-blue-600" size={20} />
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <Activity className="text-blue-600" size={20} />
+                  <span className="text-gray-600">Average Daily Sales</span>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Average Daily Sales</p>
-                  <p className="text-lg font-semibold">
-                    ₹{(summary.totalRevenue / 30).toFixed(2)}
-                  </p>
-                </div>
+                <span className="font-semibold">{formatCurrency(summary.totalRevenue / 30)}</span>
               </div>
             </div>
 
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                  <Package className="text-green-600" size={20} />
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <TrendingUp className="text-green-600" size={20} />
+                  <span className="text-gray-600">Profit Margin</span>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Items Sold</p>
-                  <p className="text-lg font-semibold">
-                    {salesData.reduce((sum, day) => sum + (day.revenue > 0 ? 1 : 0), 0)}
-                  </p>
-                </div>
+                <span className="font-semibold text-green-600">{summary.profitMargin.toFixed(1)}%</span>
               </div>
             </div>
 
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                  <BarChart3 className="text-purple-600" size={20} />
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <ShoppingBag className="text-purple-600" size={20} />
+                  <span className="text-gray-600">Peak Sales Day</span>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Peak Sales Day</p>
-                  <p className="text-lg font-semibold">
-                    ₹{Math.max(...salesData.map(d => d.revenue))}
-                  </p>
-                </div>
+                <span className="font-semibold">
+                  {formatCurrency(Math.max(...salesData.map(d => d.revenue)))}
+                </span>
               </div>
             </div>
 
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
-                  <ShoppingBag className="text-yellow-600" size={20} />
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <Package className="text-orange-600" size={20} />
+                  <span className="text-gray-600">Categories</span>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Categories</p>
-                  <p className="text-lg font-semibold">{categoryData.length}</p>
-                </div>
+                <span className="font-semibold">{categoryData.length}</span>
               </div>
             </div>
           </div>
         </motion.div>
       </div>
-
-      {/* Recent Sales Table */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 1.0 }}
-        className="bg-white rounded-xl shadow-sm p-6"
-      >
-        <h2 className="text-lg font-semibold mb-4">Recent Transactions</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Invoice</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Items</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {salesData.slice(0, 5).map((day, index) => (
-                <tr key={index} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 text-sm">{day.date}</td>
-                  <td className="px-4 py-2 text-sm text-primary-600">INV-{Math.floor(Math.random() * 10000000)}</td>
-                  <td className="px-4 py-2 text-sm">Customer {index + 1}</td>
-                  <td className="px-4 py-2 text-sm">{Math.floor(Math.random() * 5) + 1}</td>
-                  <td className="px-4 py-2 text-sm font-medium">₹{day.revenue}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </motion.div>
     </motion.div>
   );
 };

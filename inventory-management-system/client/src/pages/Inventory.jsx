@@ -23,11 +23,25 @@ const Inventory = () => {
   const [suppliers, setSuppliers] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [imageErrors, setImageErrors] = useState({});
 
   useEffect(() => {
     fetchProducts();
     fetchSuppliers();
   }, []);
+
+  // Debug log to check image URLs
+  useEffect(() => {
+    if (products.length > 0) {
+      console.log('Products with images:', products.map(p => ({
+        name: p.name,
+        images: p.colorVariants?.map(v => ({
+          color: v.colorName,
+          images: v.images
+        }))
+      })));
+    }
+  }, [products]);
 
   const fetchProducts = async () => {
     try {
@@ -75,6 +89,10 @@ const Inventory = () => {
     }
   };
 
+  const handleImageError = (productId) => {
+    setImageErrors(prev => ({ ...prev, [productId]: true }));
+  };
+
   // Get first available product image
   const getProductImage = (product) => {
     if (product.colorVariants && product.colorVariants.length > 0) {
@@ -92,7 +110,6 @@ const Inventory = () => {
     if (!product.supplier) return 'No Supplier';
     if (typeof product.supplier === 'object') return product.supplier.name;
     
-    // Find supplier from list
     const found = suppliers.find(s => s._id === product.supplier);
     return found ? found.name : 'Unknown';
   };
@@ -203,7 +220,7 @@ const Inventory = () => {
         </div>
       </div>
 
-      {/* Products List - Long Horizontal Cards */}
+      {/* Products List */}
       {loading ? (
         <div className="flex justify-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
@@ -226,6 +243,7 @@ const Inventory = () => {
                 const productImage = getProductImage(product);
                 const supplierName = getSupplierName(product);
                 const stockStatus = getStockStatus(product);
+                const hasImageError = imageErrors[product._id];
                 
                 return (
                   <motion.div
@@ -236,22 +254,27 @@ const Inventory = () => {
                     className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border border-gray-100 overflow-hidden"
                   >
                     <div className="flex flex-col sm:flex-row">
-                      {/* Product Image - Fixed size on left */}
+                      {/* Product Image */}
                       <div className="w-full sm:w-32 h-32 bg-gray-100 flex-shrink-0">
-                        {productImage ? (
+                        {productImage && !hasImageError ? (
                           <img
                             src={productImage}
                             alt={product.name}
                             className="w-full h-full object-cover"
+                            onError={() => handleImageError(product._id)}
                           />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center bg-gray-50">
-                            <ImageIcon size={32} className="text-gray-300" />
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <rect width="24" height="24" fill="#e5e7eb"/>
+                              <path d="M4 16L8 12L12 16L20 8" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round"/>
+                              <circle cx="18" cy="8" r="1" fill="#9ca3af"/>
+                            </svg>
                           </div>
                         )}
                       </div>
 
-                      {/* Product Details - Takes remaining space */}
+                      {/* Product Details */}
                       <div className="flex-1 p-4">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           {/* Left side - Main info */}
@@ -264,7 +287,6 @@ const Inventory = () => {
                             </div>
                             
                             <div className="space-y-1">
-                              {/* Supplier and Category */}
                               <div className="flex items-center text-sm text-gray-600">
                                 <span className="font-medium text-gray-500 w-20">Supplier:</span>
                                 <span className="text-primary-600">{supplierName}</span>

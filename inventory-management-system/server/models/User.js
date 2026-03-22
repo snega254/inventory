@@ -20,21 +20,16 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'employee'],
-    default: 'employee'
+    enum: ['admin', 'manager', 'cashier', 'inventory_clerk'],
+    default: 'cashier'
   },
   phone: {
     type: String,
-    required: true
+    default: ''
   },
   employeeId: {
     type: String,
     unique: true
-  },
-  position: {
-    type: String,
-    enum: ['cashier', 'sales_associate', 'manager', 'inventory_clerk'],
-    default: 'sales_associate'
   },
   permissions: {
     canCreateSales: { type: Boolean, default: true },
@@ -52,7 +47,10 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
-  lastLogin: Date,
+  lastLogin: {
+    type: Date,
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -65,18 +63,30 @@ const userSchema = new mongoose.Schema({
 
 // Generate employee ID before saving
 userSchema.pre('save', async function(next) {
-  if (!this.employeeId) {
-    const count = await mongoose.model('User').countDocuments();
-    this.employeeId = `EMP${String(count + 1).padStart(4, '0')}`;
+  try {
+    if (!this.employeeId) {
+      const count = await mongoose.model('User').countDocuments();
+      this.employeeId = `EMP${String(count + 1).padStart(4, '0')}`;
+    }
+    
+    if (!this.isModified('password')) return next();
+    this.password = await bcrypt.hash(this.password, 10);
+    next();
+  } catch (error) {
+    next(error);
   }
-  
-  if (!this.isModified('password')) return next();
-  this.password = await bcrypt.hash(this.password, 10);
-  next();
 });
 
 userSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-export default mongoose.model('User', userSchema);
+// Update the updatedAt timestamp on save
+userSchema.pre('save', function(next) {
+  this.updatedAt = Date.now();
+  next();
+});
+
+const User = mongoose.model('User', userSchema);
+
+export default User;

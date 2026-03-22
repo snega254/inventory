@@ -19,7 +19,7 @@ const Sidebar = () => {
   const menuItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/inventory', icon: Package, label: 'Inventory' },
-    { path: '/billing', icon: ShoppingCart, label: 'Billing / POS' },
+    { path: '/billing', icon: ShoppingCart, label: 'Billing' },
     { path: '/suppliers', icon: Truck, label: 'Suppliers' },
     { path: '/employees', icon: Users, label: 'Employees' },
     { path: '/reports', icon: FileText, label: 'Reports' },

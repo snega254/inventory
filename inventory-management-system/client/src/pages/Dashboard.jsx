@@ -49,13 +49,25 @@ const Dashboard = () => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       
-      // Ensure all values have defaults and limit top products to 3
+      // Format dates properly and ensure all values have defaults
+      const formattedMonthlySales = (currentStats.monthlySales || []).map(item => ({
+        ...item,
+        // Keep the full date string for display
+        fullDate: item.date,
+        // Format for display if needed
+        displayDate: new Date(item.date).toLocaleDateString('en-IN', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric'
+        })
+      }));
+
       const safeStats = {
         totalProducts: currentStats.totalProducts || 0,
         totalSuppliers: currentStats.totalSuppliers || 0,
         lowStockItems: currentStats.lowStockItems || 0,
         todayRevenue: currentStats.todayRevenue || 0,
-        monthlySales: currentStats.monthlySales || [],
+        monthlySales: formattedMonthlySales,
         topProducts: (currentStats.topProducts || []).slice(0, 3)
       };
       
@@ -99,6 +111,16 @@ const Dashboard = () => {
   const monthlySalesData = Array.isArray(stats.monthlySales) ? stats.monthlySales : [];
   const topProductsData = Array.isArray(stats.topProducts) ? stats.topProducts : [];
 
+  // Custom formatter for X-axis to show full date
+  const formatXAxis = (dateStr) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short'
+    });
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -113,7 +135,7 @@ const Dashboard = () => {
       animate={{ opacity: 1, y: 0 }}
       className="space-y-6"
     >
-      {/* KPI Cards - Only 3 cards, no Today's Revenue */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {cards.map((card, index) => (
           <motion.div
@@ -147,7 +169,9 @@ const Dashboard = () => {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold">Monthly Revenue</h3>
             <div className="text-sm bg-purple-50 px-3 py-1 rounded-full">
-              <span className="text-purple-600 font-medium">Today: ₹{(stats.todayRevenue || 0).toLocaleString()}</span>
+              <span className="text-purple-600 font-medium">
+                Today: ₹{(stats.todayRevenue || 0).toLocaleString()}
+              </span>
             </div>
           </div>
           <div className="h-80">
@@ -163,16 +187,24 @@ const Dashboard = () => {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis 
                     dataKey="date" 
-                    tickFormatter={(date) => {
-                      if (!date) return '';
-                      const d = new Date(date);
-                      return `${d.getDate()}/${d.getMonth() + 1}`;
-                    }}
+                    tickFormatter={formatXAxis}
+                    interval={Math.floor(monthlySalesData.length / 8)} // Show ~8 labels
+                    angle={-45}
+                    textAnchor="end"
+                    height={60}
                   />
                   <YAxis />
                   <Tooltip 
                     formatter={(value) => [`₹${(value || 0).toLocaleString()}`, 'Revenue']}
-                    labelFormatter={(label) => label ? new Date(label).toLocaleDateString() : ''}
+                    labelFormatter={(label) => {
+                      const date = new Date(label);
+                      return date.toLocaleDateString('en-IN', {
+                        day: '2-digit',
+                        month: 'long',
+                        year: 'numeric',
+                        weekday: 'long'
+                      });
+                    }}
                   />
                   <Area
                     type="monotone"
@@ -212,7 +244,9 @@ const Dashboard = () => {
                     </div>
                     <span className="font-medium text-sm">{product.name || 'Unknown'}</span>
                   </div>
-                  <span className="font-semibold text-primary-600 text-sm">₹{(product.revenue || 0).toLocaleString()}</span>
+                  <span className="font-semibold text-primary-600 text-sm">
+                    ₹{(product.revenue || 0).toLocaleString()}
+                  </span>
                 </div>
               ))
             ) : (
@@ -239,17 +273,24 @@ const Dashboard = () => {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis 
                   dataKey="date" 
-                  tickFormatter={(date) => {
-                    if (!date) return '';
-                    const d = new Date(date);
-                    return `${d.getDate()}/${d.getMonth() + 1}`;
-                  }}
-                  interval={4}
+                  tickFormatter={formatXAxis}
+                  interval={Math.floor(monthlySalesData.length / 6)} // Show ~6 labels
+                  angle={-45}
+                  textAnchor="end"
+                  height={60}
                 />
                 <YAxis />
                 <Tooltip 
                   formatter={(value) => [`₹${(value || 0).toLocaleString()}`, 'Revenue']}
-                  labelFormatter={(label) => label ? new Date(label).toLocaleDateString() : ''}
+                  labelFormatter={(label) => {
+                    const date = new Date(label);
+                    return date.toLocaleDateString('en-IN', {
+                      day: '2-digit',
+                      month: 'long',
+                      year: 'numeric',
+                      weekday: 'long'
+                    });
+                  }}
                 />
                 <Bar dataKey="revenue" fill="#3b82f6" radius={[4, 4, 0, 0]} />
               </BarChart>

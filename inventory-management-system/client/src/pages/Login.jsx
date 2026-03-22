@@ -48,7 +48,7 @@ const Login = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                placeholder="admin@attire.com"
+                placeholder="Enter your email"
                 required
               />
             </div>
@@ -65,7 +65,7 @@ const Login = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                placeholder="••••••••"
+                placeholder="Enter your password"
                 required
               />
             </div>
@@ -79,11 +79,6 @@ const Login = () => {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
-
-        <div className="mt-6 text-center text-sm text-gray-500">
-          <p>Demo Credentials:</p>
-          <p className="font-mono text-xs mt-1">admin@attire.com / admin123</p>
-        </div>
       </motion.div>
     </div>
   );
