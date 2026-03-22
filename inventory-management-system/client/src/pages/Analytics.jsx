@@ -49,31 +49,25 @@ const Analytics = () => {
   }, []);
 
   const fetchAnalyticsData = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      
-      // Fetch sales data
-     
-const salesRes = await API.get('/sales');
+  try {
+    // Fetch sales data - use API
+    const salesRes = await API.get('/sales');
+    
+    // Fetch products data - use API (not axios with localhost)
+    const productsRes = await API.get('/products');
 
-      // Fetch products data
-      const productsRes = await axios.get('http://localhost:5000/api/products', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+    const sales = salesRes.data;
+    const products = productsRes.data;
 
-      const sales = salesRes.data;
-      const products = productsRes.data;
-
-      // Process data for analytics
-      processAnalyticsData(sales, products);
-    } catch (error) {
-      console.error('Analytics error:', error);
-      toast.error('Failed to fetch analytics data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+    // Process data for analytics
+    processAnalyticsData(sales, products);
+  } catch (error) {
+    console.error('Analytics error:', error);
+    toast.error('Failed to fetch analytics data');
+  } finally {
+    setLoading(false);
+  }
+};
   const processAnalyticsData = (sales, products) => {
     // Create product lookup map for profit calculation
     const productMap = new Map();

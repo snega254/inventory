@@ -48,16 +48,14 @@ const Billing = () => {
     setBillNumber(`INV-${year}${month}${day}-${random}`);
   };
 
-  const fetchProducts = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const { data } = await API.get('/products');
-await API.post('/sales', saleData); 
-      setProducts(data);
-    } catch (error) {
-      toast.error('Failed to fetch products');
-    }
-  };
+const fetchProducts = async () => {
+  try {
+    const { data } = await API.get('/products');
+    setProducts(data);
+  } catch (error) {
+    toast.error('Failed to fetch products');
+  }
+};
 
   const filteredProducts = products.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -340,18 +338,14 @@ await API.post('/sales', saleData);
       console.log('Sending items with profit:', items);
       console.log('Total profit:', totalProfit);
 
-      const response = await axios.post(
-        'http://localhost:5000/api/sales',
-        {
-          items,
-          customerName: customer.name,
-          phoneNumber: customer.phone,
-          paymentMethod: selectedPayment,
-          discount: 0,
-          totalProfit
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+     const response = await API.post('/sales', {
+  items,
+  customerName: customer.name,
+  phoneNumber: customer.phone,
+  paymentMethod: selectedPayment,
+  discount: 0,
+  totalProfit
+});
 
       console.log('Sale created:', response.data);
       generatePDF(true);
