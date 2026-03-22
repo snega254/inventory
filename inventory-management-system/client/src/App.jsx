@@ -11,6 +11,18 @@ import Analytics from './pages/Analytics';
 import Employees from './pages/Employees';
 import Chatbot from './components/Chatbot';
 
+// PrivateRoute component - checks if user is authenticated
+const PrivateRoute = ({ children }) => {
+  const token = localStorage.getItem('token');
+  const user = localStorage.getItem('user');
+  
+  if (!token || !user) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  return children;
+};
+
 function App() {
   return (
     <AuthProvider>
