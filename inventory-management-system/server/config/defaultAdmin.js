@@ -22,7 +22,7 @@ export const createDefaultAdmin = async () => {
       await admin.save();
       console.log('✅ Default admin created successfully!');
       console.log('📧 Email: admin@attire.com');
-      console.log('🔑 Password: admin123');
+      console.log('🔑 Password: Admin@123');
     } else {
       console.log('✅ Admin user already exists');
     }
