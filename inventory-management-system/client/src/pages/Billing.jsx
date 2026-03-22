@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import API from '../services/api';
 import { motion } from 'framer-motion';
 import {
   Search,
@@ -50,9 +51,8 @@ const Billing = () => {
   const fetchProducts = async () => {
     try {
       const token = localStorage.getItem('token');
-      const { data } = await axios.get('http://localhost:5000/api/products', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const { data } = await API.get('/products');
+await API.post('/sales', saleData); 
       setProducts(data);
     } catch (error) {
       toast.error('Failed to fetch products');

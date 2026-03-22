@@ -28,7 +28,7 @@ import {
 } from 'recharts';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-
+import API from '../services/api';
 const Analytics = () => {
   const [loading, setLoading] = useState(true);
   const [salesData, setSalesData] = useState([]);
@@ -53,9 +53,8 @@ const Analytics = () => {
       const token = localStorage.getItem('token');
       
       // Fetch sales data
-      const salesRes = await axios.get('http://localhost:5000/api/sales', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+     
+const salesRes = await API.get('/sales');
 
       // Fetch products data
       const productsRes = await axios.get('http://localhost:5000/api/products', {

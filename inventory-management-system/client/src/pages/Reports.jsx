@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import API from '../services/api';
 import {
   Search,
   Download,
@@ -102,17 +103,9 @@ const Reports = () => {
     try {
       const token = localStorage.getItem('token');
       
-      const salesRes = await axios.get('http://localhost:5000/api/sales', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      const productsRes = await axios.get('http://localhost:5000/api/products', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      const suppliersRes = await axios.get('http://localhost:5000/api/suppliers', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const salesRes = await API.get('/sales');
+const productsRes = await API.get('/products');
+const suppliersRes = await API.get('/suppliers');
 
       setSales(salesRes.data);
       setProducts(productsRes.data);

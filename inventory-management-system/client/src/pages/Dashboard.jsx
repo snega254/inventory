@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import API from '../services/api';
 import { motion } from 'framer-motion';
 import {
   Package,
@@ -44,10 +45,7 @@ const Dashboard = () => {
       }
       
       // Fetch current stats
-      const { data: currentStats } = await axios.get(
-        'http://localhost:5000/api/sales/dashboard/stats',
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+     const { data: currentStats } = await API.get('/sales/dashboard/stats');
       
       // Format dates properly and ensure all values have defaults
       const formattedMonthlySales = (currentStats.monthlySales || []).map(item => ({
