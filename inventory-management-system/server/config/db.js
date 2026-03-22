@@ -9,12 +9,11 @@ const connectDB = async () => {
     }
 
     console.log('⏳ Connecting to MongoDB...');
+    console.log('Using URI:', mongoURI.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@')); // Hide password in logs
     
-    const conn = await mongoose.connect(mongoURI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-
+    // Simplified connection options for Atlas
+    const conn = await mongoose.connect(mongoURI);
+    
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
     console.log(`📊 Database: ${conn.connection.name}`);
     
@@ -30,8 +29,10 @@ const connectDB = async () => {
     return conn;
   } catch (error) {
     console.error('❌ MongoDB connection error:', error.message);
-    console.error('💡 Make sure MongoDB is running on your system');
-    console.error('💡 You can start MongoDB with: mongod');
+    console.error('💡 Check your MongoDB Atlas connection:');
+    console.error('   1. Verify database user exists in Atlas');
+    console.error('   2. Check Network Access includes 0.0.0.0/0');
+    console.error('   3. Verify cluster is active (not paused)');
     process.exit(1);
   }
 };
