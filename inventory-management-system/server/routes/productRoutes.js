@@ -7,7 +7,8 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
-  uploadProductImages
+  uploadProductImages,
+  getLowStockProducts
 } from '../controllers/productController.js';
 
 const router = express.Router();
@@ -17,6 +18,7 @@ router.use(protect);
 
 // Public routes (viewable by all authenticated users)
 router.get('/', getProducts);
+router.get('/low-stock/all', getLowStockProducts);
 
 // Protected routes (require inventory management permission)
 router.post('/', checkPermission('canManageInventory'), createProduct);

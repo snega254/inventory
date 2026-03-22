@@ -12,7 +12,6 @@ const __dirname = path.dirname(__filename);
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadDir = path.join(__dirname, '../uploads/products');
-    // Create directory if it doesn't exist
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
@@ -39,9 +38,9 @@ const fileFilter = (req, file, cb) => {
 
 export const upload = multer({
   storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: fileFilter
-}).array('images', 10); // Max 10 images
+}).array('images', 10);
 
 export const uploadProductImages = async (req, res) => {
   try {
@@ -77,8 +76,7 @@ export const getProducts = async (req, res) => {
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
-        { sku: { $regex: search, $options: 'i' } },
-        { tags: { $in: [new RegExp(search, 'i')] } }
+        { sku: { $regex: search, $options: 'i' } }
       ];
     }
 
@@ -88,7 +86,6 @@ export const getProducts = async (req, res) => {
 
     const products = await Product.find(query).populate('supplier', 'name');
     
-    // Add full image URLs
     const baseUrl = process.env.BASE_URL || 'http://localhost:5000';
     const productsWithImageUrls = products.map(product => {
       const productObj = product.toObject();
@@ -96,9 +93,7 @@ export const getProducts = async (req, res) => {
         productObj.colorVariants = productObj.colorVariants.map(variant => {
           if (variant.images) {
             variant.images = variant.images.map(img => {
-              // If it's already a full URL, return as is
               if (img.startsWith('http')) return img;
-              // Otherwise, construct the URL
               return `${baseUrl}/uploads/products/${img}`;
             });
           }
@@ -160,11 +155,10 @@ export const deleteProduct = async (req, res) => {
     }
     
     // Delete associated images
-    if (product && product.colorVariants) {
+    if (product.colorVariants) {
       product.colorVariants.forEach(variant => {
         if (variant.images && variant.images.length > 0) {
           variant.images.forEach(image => {
-            // Extract filename from URL if it's a full URL
             const filename = image.includes('/') ? image.split('/').pop() : image;
             const imagePath = path.join(__dirname, '../uploads/products/', filename);
             if (fs.existsSync(imagePath)) {
