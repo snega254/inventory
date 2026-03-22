@@ -1,32 +1,39 @@
 import User from '../models/User.js';
-import bcrypt from 'bcryptjs';
 
 export const createDefaultAdmin = async () => {
   try {
-    const adminExists = await User.findOne({ email: 'admin@attire.com' });
+    // Check if any admin exists
+    const adminExists = await User.findOne({ role: 'admin' });
     
     if (!adminExists) {
-      const hashedPassword = await bcrypt.hash('Admin@123', 10);
+      console.log('📝 Creating default admin user...');
       
-      const admin = new User({
-        name: 'Admin User',
+      const defaultAdmin = await User.create({
+        name: 'Shop Owner',
         email: 'admin@attire.com',
-        password: hashedPassword,
-        role: 'admin',
-        isActive: true,
+        password: 'admin123',
         phone: '9876543210',
-        position: 'Administrator',
-        employeeId: 'ADMIN001'
+        role: 'admin',
+        position: 'manager',
+        permissions: {
+          canCreateSales: true,
+          canViewReports: true,
+          canManageInventory: true,
+          canManageEmployees: true,
+          canManageSuppliers: true,
+          canViewAnalytics: true
+        },
+        isActive: true
       });
-      
-      await admin.save();
+
       console.log('✅ Default admin created successfully!');
       console.log('📧 Email: admin@attire.com');
-      console.log('🔑 Password: Admin@123');
+      console.log('🔑 Password: admin123');
+      console.log('⚠️  Please change the password after first login!');
     } else {
       console.log('✅ Admin user already exists');
     }
   } catch (error) {
-    console.error('Error creating default admin:', error);
+    console.error('❌ Error creating default admin:', error.message);
   }
 };
