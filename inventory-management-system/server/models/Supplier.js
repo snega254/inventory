@@ -3,44 +3,24 @@ import mongoose from 'mongoose';
 // Define all available categories and their subcategories
 export const CATEGORIES = {
   'Shirts': [
-    'Linen',
-    'Embroidery',
-    'Flannel',
-    'Viscose',
-    'Designer',
-    'Mandarin collar',
-    'Oxford',
-    'Double pocket',
-    'Corduroy',
-    'Stained',
-    'Drop shoulder',
-    'Oversized'
+    'Linen', 'Embroidery', 'Flannel', 'Viscose', 'Designer',
+    'Mandarin collar', 'Oxford', 'Double pocket', 'Corduroy',
+    'Stained', 'Drop shoulder', 'Oversized'
   ],
   'Trousers/Pants': [
-    'Linen pants',
-    'Formal trousers',
-    'Straight fit jeans',
-    'Baggy fit jeans',
-    'Patched jeans',
-    'Cargo pants',
-    'Gurkha pants'
+    'Linen pants', 'Formal trousers', 'Straight fit jeans',
+    'Baggy fit jeans', 'Patched jeans', 'Cargo pants', 'Gurkha pants'
   ],
   'Sets & Occasion Wear': [
-    'Wedding outfits',
-    'Formal suit combos (Size M to XXL)',
-    'Sherwani sets',
-    'Indo-western outfits'
+    'Wedding outfits', 'Formal suit combos (Size M to XXL)',
+    'Sherwani sets', 'Indo-western outfits'
   ],
   'Other Categories': [
-    'Vintage Tees',
-    'Casual streetwear',
-    'Trendy jackets',
-    'Hoodies',
-    'Sweatshirts'
+    'Vintage Tees', 'Casual streetwear', 'Trendy jackets',
+    'Hoodies', 'Sweatshirts'
   ]
 };
 
-// Flatten all subcategories for easy access
 export const ALL_SUBCATEGORIES = Object.values(CATEGORIES).flat();
 
 const supplierSchema = new mongoose.Schema(
@@ -69,7 +49,7 @@ const supplierSchema = new mongoose.Schema(
             type: String,
             required: true,
         },
-        gst: {
+        gst: {  // ✅ CHANGE: Use 'gst' instead of 'gstNumber'
             type: String,
             required: true,
             unique: true,
@@ -118,7 +98,7 @@ const supplierSchema = new mongoose.Schema(
     }
 );
 
-// Index for search
+// Index for search - use 'gst' not 'gstNumber'
 supplierSchema.index({ name: 'text', email: 'text', gst: 'text' });
 
 const Supplier = mongoose.model('Supplier', supplierSchema);

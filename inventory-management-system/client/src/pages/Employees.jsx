@@ -1,3 +1,4 @@
+// src/pages/Employees.jsx
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -15,7 +16,7 @@ import {
   ToggleRight,
   Key
 } from 'lucide-react';
-import axios from 'axios';
+import API from '../services/api';
 import toast from 'react-hot-toast';
 import UserModal from '../components/UserModal';
 
@@ -34,10 +35,7 @@ const Employees = () => {
 
   const fetchUsers = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const { data } = await axios.get('http://localhost:5000/api/users', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const { data } = await API.get('/users');
       
       // Handle both array and object responses
       if (Array.isArray(data)) {
@@ -57,12 +55,7 @@ const Employees = () => {
 
   const handleToggleStatus = async (id) => {
     try {
-      const token = localStorage.getItem('token');
-      const { data } = await axios.put(
-        `http://localhost:5000/api/users/${id}/toggle-status`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const { data } = await API.put(`/users/${id}/toggle-status`, {});
       
       setUsers(users.map(user => 
         user._id === id ? { ...user, isActive: data.isActive } : user
@@ -78,10 +71,7 @@ const Employees = () => {
     if (!confirm('Are you sure you want to delete this user?')) return;
 
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`http://localhost:5000/api/users/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await API.delete(`/users/${id}`);
       
       setUsers(users.filter(user => user._id !== id));
       toast.success('User deleted successfully');
@@ -95,12 +85,7 @@ const Employees = () => {
     if (!newPassword) return;
 
     try {
-      const token = localStorage.getItem('token');
-      await axios.put(
-        `http://localhost:5000/api/users/${id}`,
-        { password: newPassword },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await API.put(`/users/${id}`, { password: newPassword });
       
       toast.success('Password reset successfully');
     } catch (error) {

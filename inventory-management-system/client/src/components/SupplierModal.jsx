@@ -1,7 +1,8 @@
+// src/components/SupplierModal.jsx
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X, Plus, XCircle } from 'lucide-react';
-import axios from 'axios';
+import API from '../services/api';
 import toast from 'react-hot-toast';
 
 const SupplierModal = ({ isOpen, onClose, supplier, onSuccess }) => {
@@ -13,7 +14,7 @@ const SupplierModal = ({ isOpen, onClose, supplier, onSuccess }) => {
     gst: '',
     categories: [],
     otherCategories: [],
-    status: 'Active' // Default status
+    status: 'Active'
   });
 
   const [otherCategoryInput, setOtherCategoryInput] = useState('');
@@ -59,11 +60,7 @@ const SupplierModal = ({ isOpen, onClose, supplier, onSuccess }) => {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('token');
-      const url = supplier
-        ? `http://localhost:5000/api/suppliers/${supplier._id}`
-        : 'http://localhost:5000/api/suppliers';
-      
+      const url = supplier ? `/suppliers/${supplier._id}` : '/suppliers';
       const method = supplier ? 'put' : 'post';
 
       // Combine predefined and other categories
@@ -88,14 +85,17 @@ const SupplierModal = ({ isOpen, onClose, supplier, onSuccess }) => {
         status: formData.status
       };
 
-      await axios[method](url, dataToSend, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      if (method === 'post') {
+        await API.post(url, dataToSend);
+      } else {
+        await API.put(url, dataToSend);
+      }
 
       toast.success(supplier ? 'Supplier updated successfully' : 'Supplier created successfully');
       onSuccess();
       onClose();
     } catch (error) {
+      console.error('Supplier operation failed:', error);
       toast.error(error.response?.data?.message || 'Operation failed');
     } finally {
       setLoading(false);

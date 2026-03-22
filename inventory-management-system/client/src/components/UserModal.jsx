@@ -1,7 +1,8 @@
+// src/components/UserModal.jsx
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X } from 'lucide-react';
-import axios from 'axios';
+import API from '../services/api';
 import toast from 'react-hot-toast';
 
 const UserModal = ({ isOpen, onClose, user, onSuccess }) => {
@@ -21,7 +22,7 @@ const UserModal = ({ isOpen, onClose, user, onSuccess }) => {
       setFormData({
         name: user.name || '',
         email: user.email || '',
-        password: '', // Don't show password when editing
+        password: '',
         phone: user.phone || '',
         role: user.role || 'cashier',
         isActive: user.isActive !== undefined ? user.isActive : true
@@ -43,27 +44,25 @@ const UserModal = ({ isOpen, onClose, user, onSuccess }) => {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('token');
-      const url = user
-        ? `http://localhost:5000/api/users/${user._id}`
-        : 'http://localhost:5000/api/users';
-      
+      const url = user ? `/users/${user._id}` : '/users';
       const method = user ? 'put' : 'post';
 
-      // For update, don't send password if empty
       const dataToSend = { ...formData };
       if (user && !dataToSend.password) {
         delete dataToSend.password;
       }
 
-      await axios[method](url, dataToSend, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      if (method === 'post') {
+        await API.post(url, dataToSend);
+      } else {
+        await API.put(url, dataToSend);
+      }
 
       toast.success(user ? 'User updated successfully' : 'User created successfully');
       onSuccess();
       onClose();
     } catch (error) {
+      console.error('User operation failed:', error);
       toast.error(error.response?.data?.message || 'Operation failed');
     } finally {
       setLoading(false);

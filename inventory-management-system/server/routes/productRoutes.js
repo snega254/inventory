@@ -1,23 +1,27 @@
+// backend/routes/productRoutes.js
 import express from 'express';
+import { protect } from '../middleware/auth.js';
+import { checkPermission } from '../middleware/permissions.js';
 import {
   getProducts,
   createProduct,
   updateProduct,
   deleteProduct,
-  getLowStockProducts
+  uploadProductImages
 } from '../controllers/productController.js';
-import { protect, admin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-router.route('/')
-  .get(protect, getProducts)
-  .post(protect, admin, createProduct);
+// All routes require authentication
+router.use(protect);
 
-router.route('/:id')
-  .put(protect, admin, updateProduct)
-  .delete(protect, admin, deleteProduct);
+// Public routes (viewable by all authenticated users)
+router.get('/', getProducts);
 
-router.get('/low-stock/all', protect, getLowStockProducts);
+// Protected routes (require inventory management permission)
+router.post('/', checkPermission('canManageInventory'), createProduct);
+router.put('/:id', checkPermission('canManageInventory'), updateProduct);
+router.delete('/:id', checkPermission('canManageInventory'), deleteProduct);
+router.post('/upload', checkPermission('canManageInventory'), uploadProductImages);
 
 export default router;

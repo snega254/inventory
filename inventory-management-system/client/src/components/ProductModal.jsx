@@ -1,7 +1,8 @@
+// src/components/ProductModal.jsx
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X, Plus, Trash2, Upload } from 'lucide-react';
-import axios from 'axios';
+import API from '../services/api';
 import toast from 'react-hot-toast';
 
 const ProductModal = ({ isOpen, onClose, product, onSuccess }) => {
@@ -115,15 +116,12 @@ const ProductModal = ({ isOpen, onClose, product, onSuccess }) => {
 
   const fetchSuppliers = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const { data } = await axios.get('http://localhost:5000/api/suppliers', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await API.get('/suppliers');
       
-      if (Array.isArray(data)) {
-        setSuppliers(data);
-      } else if (data.suppliers) {
-        setSuppliers(data.suppliers);
+      if (Array.isArray(response.data)) {
+        setSuppliers(response.data);
+      } else if (response.data.suppliers) {
+        setSuppliers(response.data.suppliers);
       } else {
         setSuppliers([]);
       }
@@ -173,11 +171,8 @@ const ProductModal = ({ isOpen, onClose, product, onSuccess }) => {
 
     setUploading(true);
     try {
-      const token = localStorage.getItem('token');
-      
-      const { data } = await axios.post('http://localhost:5000/api/upload', uploadFormData, {
-        headers: { 
-          Authorization: `Bearer ${token}`,
+      const { data } = await API.post('/upload', uploadFormData, {
+        headers: {
           'Content-Type': 'multipart/form-data'
         }
       });
@@ -216,11 +211,7 @@ const ProductModal = ({ isOpen, onClose, product, onSuccess }) => {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('token');
-      const url = product
-        ? `http://localhost:5000/api/products/${product._id}`
-        : 'http://localhost:5000/api/products';
-      
+      const url = product ? `/products/${product._id}` : '/products';
       const method = product ? 'put' : 'post';
 
       const totalQuantity = formData.colorVariants.reduce((total, variant) => 
@@ -241,15 +232,22 @@ const ProductModal = ({ isOpen, onClose, product, onSuccess }) => {
         totalQuantity
       };
 
-      await axios[method](url, dataToSend, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      if (method === 'post') {
+        await API.post(url, dataToSend);
+      } else {
+        await API.put(url, dataToSend);
+      }
 
-      toast.success(product ? 'Product updated successfully' : 'Product created successfully');
+      toast.success(product ? 'Product updated successfully' : 'Product added successfully');
       onSuccess();
       onClose();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Operation failed');
+      console.error('Product operation failed:', error);
+      if (error.response?.status === 403) {
+        toast.error('You don\'t have permission to add products. Contact admin.');
+      } else {
+        toast.error(error.response?.data?.message || 'Operation failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -763,7 +761,7 @@ const ProductModal = ({ isOpen, onClose, product, onSuccess }) => {
                 disabled={loading || !formData.supplier}
                 className="flex-1 bg-primary-600 text-white py-2 rounded-lg hover:bg-primary-700 disabled:opacity-50"
               >
-                {loading ? 'Saving...' : product ? 'Update Product' : 'Create Product'}
+                {loading ? 'Saving...' : product ? 'Update Product' : 'Add Product'}
               </button>
               <button
                 type="button"

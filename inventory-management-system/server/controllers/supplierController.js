@@ -5,8 +5,16 @@ import Supplier, { CATEGORIES, ALL_SUBCATEGORIES } from '../models/Supplier.js';
 // @access  Private
 export const getSuppliers = async (req, res) => {
   try {
+    console.log('📋 Fetching suppliers for user:', req.user?._id);
+    
+    if (!req.user) {
+      return res.status(401).json({ message: 'Not authorized' });
+    }
+
     const { search, status, category } = req.query;
-    let query = { user: req.user._id };
+    
+    // ✅ REMOVED user filter to show ALL suppliers to everyone
+    let query = {};
 
     if (search) {
       query.$or = [
@@ -17,7 +25,7 @@ export const getSuppliers = async (req, res) => {
       ];
     }
 
-    if (status) {
+    if (status && status !== 'all') {
       query.status = status;
     }
 
@@ -25,22 +33,21 @@ export const getSuppliers = async (req, res) => {
       query['categories.mainCategory'] = category;
     }
 
+    console.log('🔍 Query:', JSON.stringify(query));
+
     const suppliers = await Supplier.find(query)
       .populate('user', 'name email')
       .sort('-createdAt');
 
-    // Get unique categories for filtering
-    const allCategories = await Supplier.distinct('categories.mainCategory');
+    console.log(`✅ Found ${suppliers.length} suppliers`);
+    res.json(suppliers);
 
-    res.json({
-      suppliers,
-      categories: allCategories,
-      categoryOptions: CATEGORIES,
-      allSubcategories: ALL_SUBCATEGORIES
-    });
   } catch (error) {
-    console.error('Get suppliers error:', error);
-    res.status(500).json({ message: error.message });
+    console.error('❌ Get suppliers error:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch suppliers',
+      error: error.message 
+    });
   }
 };
 
@@ -70,9 +77,22 @@ export const getSupplier = async (req, res) => {
 // @access  Private
 export const createSupplier = async (req, res) => {
   try {
+    console.log('📝 Creating supplier for user:', req.user?._id);
+    
+    if (!req.user) {
+      return res.status(401).json({ message: 'Not authorized' });
+    }
+
     const { name, phone, email, address, gst, categories, products, paymentTerms, bankDetails, notes } = req.body;
 
-    // Check if supplier with same GST exists
+    // Validate required fields
+    if (!name || !phone || !email || !address || !gst) {
+      return res.status(400).json({ 
+        message: 'Please provide all required fields' 
+      });
+    }
+
+    // Check if supplier exists
     const existingSupplier = await Supplier.findOne({ 
       $or: [
         { gst: gst?.toUpperCase() },
@@ -86,13 +106,14 @@ export const createSupplier = async (req, res) => {
       });
     }
 
+    // Create supplier
     const supplier = await Supplier.create({
       user: req.user._id,
       name,
       phone,
-      email,
+      email: email.toLowerCase(),
       address,
-      gst: gst?.toUpperCase(),
+      gst: gst.toUpperCase(),
       categories: categories || [],
       products: products || [],
       paymentTerms: paymentTerms || '30 days',
@@ -101,10 +122,22 @@ export const createSupplier = async (req, res) => {
       status: 'Active'
     });
 
+    console.log('✅ Supplier created:', supplier._id);
     res.status(201).json(supplier);
+
   } catch (error) {
-    console.error('Create supplier error:', error);
-    res.status(500).json({ message: error.message });
+    console.error('❌ Create supplier error:', error);
+    
+    if (error.code === 11000) {
+      return res.status(400).json({ 
+        message: 'A supplier with this GST or Email already exists' 
+      });
+    }
+    
+    res.status(500).json({ 
+      message: 'Failed to create supplier',
+      error: error.message 
+    });
   }
 };
 
@@ -113,6 +146,12 @@ export const createSupplier = async (req, res) => {
 // @access  Private
 export const updateSupplier = async (req, res) => {
   try {
+    console.log('📝 Updating supplier:', req.params.id);
+    
+    if (!req.user) {
+      return res.status(401).json({ message: 'Not authorized' });
+    }
+
     const supplier = await Supplier.findOne({
       _id: req.params.id,
       user: req.user._id
@@ -122,7 +161,7 @@ export const updateSupplier = async (req, res) => {
       return res.status(404).json({ message: 'Supplier not found' });
     }
 
-    // Check if updating to an existing GST/email
+    // Check GST uniqueness if updating
     if (req.body.gst && req.body.gst.toUpperCase() !== supplier.gst) {
       const existingGST = await Supplier.findOne({ 
         gst: req.body.gst.toUpperCase(),
@@ -133,6 +172,7 @@ export const updateSupplier = async (req, res) => {
       }
     }
 
+    // Check email uniqueness if updating
     if (req.body.email && req.body.email.toLowerCase() !== supplier.email) {
       const existingEmail = await Supplier.findOne({ 
         email: req.body.email.toLowerCase(),
@@ -157,10 +197,16 @@ export const updateSupplier = async (req, res) => {
     supplier.status = req.body.status || supplier.status;
 
     const updatedSupplier = await supplier.save();
+    console.log('✅ Supplier updated:', updatedSupplier._id);
+    
     res.json(updatedSupplier);
+
   } catch (error) {
-    console.error('Update supplier error:', error);
-    res.status(500).json({ message: error.message });
+    console.error('❌ Update supplier error:', error);
+    res.status(500).json({ 
+      message: 'Failed to update supplier',
+      error: error.message 
+    });
   }
 };
 
@@ -169,6 +215,12 @@ export const updateSupplier = async (req, res) => {
 // @access  Private
 export const deleteSupplier = async (req, res) => {
   try {
+    console.log('🗑️ Deleting supplier:', req.params.id);
+    
+    if (!req.user) {
+      return res.status(401).json({ message: 'Not authorized' });
+    }
+
     const supplier = await Supplier.findOne({
       _id: req.params.id,
       user: req.user._id
@@ -179,10 +231,16 @@ export const deleteSupplier = async (req, res) => {
     }
 
     await supplier.deleteOne();
+    console.log('✅ Supplier deleted');
+    
     res.json({ message: 'Supplier deleted successfully' });
+
   } catch (error) {
-    console.error('Delete supplier error:', error);
-    res.status(500).json({ message: error.message });
+    console.error('❌ Delete supplier error:', error);
+    res.status(500).json({ 
+      message: 'Failed to delete supplier',
+      error: error.message 
+    });
   }
 };
 

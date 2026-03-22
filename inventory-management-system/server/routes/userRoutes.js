@@ -8,7 +8,7 @@ import {
   toggleUserStatus,
   getCurrentUser
 } from '../controllers/userController.js';
-import { protect, admin } from '../middleware/authMiddleware.js';
+import { protect, admin } from '../middleware/auth.js';
 
 const router = express.Router();
 

@@ -1,3 +1,4 @@
+// backend/controllers/productController.js
 import Product from '../models/Product.js';
 import multer from 'multer';
 import path from 'path';
@@ -41,6 +42,32 @@ export const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: fileFilter
 }).array('images', 10); // Max 10 images
+
+export const uploadProductImages = async (req, res) => {
+  try {
+    upload(req, res, async function(err) {
+      if (err instanceof multer.MulterError) {
+        return res.status(400).json({ message: 'File upload error: ' + err.message });
+      } else if (err) {
+        return res.status(400).json({ message: err.message });
+      }
+
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ message: 'No files uploaded' });
+      }
+
+      const files = req.files.map(file => file.filename);
+      res.json({ 
+        message: 'Files uploaded successfully', 
+        files: files,
+        urls: files.map(f => `http://localhost:5000/uploads/products/${f}`)
+      });
+    });
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
 
 export const getProducts = async (req, res) => {
   try {
@@ -88,35 +115,16 @@ export const getProducts = async (req, res) => {
   }
 };
 
-export const uploadProductImages = async (req, res) => {
-  try {
-    upload(req, res, async function(err) {
-      if (err instanceof multer.MulterError) {
-        return res.status(400).json({ message: 'File upload error: ' + err.message });
-      } else if (err) {
-        return res.status(400).json({ message: err.message });
-      }
-
-      if (!req.files || req.files.length === 0) {
-        return res.status(400).json({ message: 'No files uploaded' });
-      }
-
-      const files = req.files.map(file => file.filename);
-      res.json({ 
-        message: 'Files uploaded successfully', 
-        files: files,
-        urls: files.map(f => `http://localhost:5000/uploads/products/${f}`)
-      });
-    });
-  } catch (error) {
-    console.error('Upload error:', error);
-    res.status(500).json({ message: error.message });
-  }
-};
-
 export const createProduct = async (req, res) => {
   try {
-    const product = await Product.create(req.body);
+    console.log('Creating product for user:', req.user._id, 'Role:', req.user.role);
+    console.log('Product data:', req.body);
+    
+    const product = await Product.create({
+      ...req.body,
+      createdBy: req.user._id
+    });
+    
     res.status(201).json(product);
   } catch (error) {
     console.error('Create product error:', error);
@@ -131,6 +139,11 @@ export const updateProduct = async (req, res) => {
       { ...req.body, updatedAt: Date.now() },
       { new: true }
     );
+    
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+    
     res.json(product);
   } catch (error) {
     console.error('Update product error:', error);
@@ -141,6 +154,10 @@ export const updateProduct = async (req, res) => {
 export const deleteProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
+    
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
     
     // Delete associated images
     if (product && product.colorVariants) {
@@ -174,7 +191,8 @@ export const getLowStockProducts = async (req, res) => {
           $expr: { $lte: ['$quantity', '$minStock'] }
         }
       }
-    });
+    }).populate('supplier', 'name');
+    
     res.json(products);
   } catch (error) {
     console.error('Get low stock error:', error);
