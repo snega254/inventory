@@ -10,7 +10,8 @@ import {
   Activity,
   Users,
   CreditCard,
-  DollarSign
+  DollarSign,
+  AlertTriangle
 } from 'lucide-react';
 import {
   BarChart,
@@ -487,8 +488,8 @@ const Analytics = () => {
               <span className="font-semibold">{summary.totalSales}</span>
             </div>
             <div className="flex justify-between items-center py-2">
-              <div className="flex items-center gap-2"><TrendingUp size={16} className="text-orange-500" /><span>Profit Margin</span></div>
-              <span className="font-semibold text-green-600">{summary.profitMargin.toFixed(1)}%</span>
+              <div className="flex items-center gap-2"><AlertTriangle size={16} className="text-red-500" /><span>Low Stock Items</span></div>
+              <span className="font-semibold text-red-600">{summary.lowStockItems}</span>
             </div>
           </div>
         </div>

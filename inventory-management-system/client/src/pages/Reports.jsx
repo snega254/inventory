@@ -7,18 +7,15 @@ import {
   Calendar,
   IndianRupee,
   TrendingUp,
-  TrendingDown,
   RefreshCw,
   DownloadCloud,
   Eye,
   EyeOff,
   ShoppingBag,
   Package,
-  Truck,
   AlertCircle,
   BarChart3,
-  PieChart,
-  LineChart as LineChartIcon
+  PieChart
 } from 'lucide-react';
 import API from '../services/api';
 import toast from 'react-hot-toast';
@@ -47,7 +44,6 @@ import {
 const Reports = () => {
   const [sales, setSales] = useState([]);
   const [products, setProducts] = useState([]);
-  const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [search, setSearch] = useState('');
@@ -57,7 +53,6 @@ const Reports = () => {
   });
   const [paymentFilter, setPaymentFilter] = useState('all');
   const [sortBy, setSortBy] = useState('date_desc');
-  const [viewMode, setViewMode] = useState('detailed');
   const [showCharts, setShowCharts] = useState(true);
   const [activeChart, setActiveChart] = useState('profit');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -92,7 +87,7 @@ const Reports = () => {
     if (sales.length > 0 && products.length > 0) {
       filterAndCalculateData();
     }
-  }, [sales, products, suppliers, dateRange, paymentFilter]);
+  }, [sales, products, dateRange, paymentFilter]);
 
   const fetchAllData = async () => {
     setLoading(true);
@@ -103,7 +98,7 @@ const Reports = () => {
 
       setSales(salesRes.data);
       setProducts(productsRes.data);
-      setSuppliers(Array.isArray(suppliersRes.data) ? suppliersRes.data : suppliersRes.data.suppliers || []);
+      setStats(prev => ({ ...prev, totalProducts: productsRes.data.length, totalSuppliers: suppliersRes.data.length || 0 }));
     } catch (error) {
       console.error('Failed to fetch data:', error);
       toast.error('Failed to fetch report data');
@@ -156,12 +151,8 @@ const Reports = () => {
           const productName = item.productName || 'Unknown';
           const existing = productProfitMap.get(productName) || { 
             name: productName,
-            quantity: 0, 
-            revenue: 0, 
-            profit: 0 
+            profit: 0
           };
-          existing.quantity += quantity;
-          existing.revenue += sellingPrice * quantity;
           existing.profit += itemProfit;
           productProfitMap.set(productName, existing);
         }
@@ -171,12 +162,10 @@ const Reports = () => {
         date: displayDate,
         fullDate: dateStr,
         revenue: 0, 
-        profit: 0, 
-        transactions: 0 
+        profit: 0
       };
       currentDaily.revenue += sale.total || 0;
       currentDaily.profit += saleProfit;
-      currentDaily.transactions += 1;
       dailyProfitMap.set(dateStr, currentDaily);
     });
 
@@ -198,7 +187,8 @@ const Reports = () => {
       { name: 'Card', value: cardCount, amount: paymentFiltered.filter(s => s.paymentMethod === 'Card').reduce((sum, s) => sum + (s.total || 0), 0) }
     ].filter(p => p.value > 0);
 
-    setStats({
+    setStats(prev => ({
+      ...prev,
       totalRevenue,
       totalProfit,
       totalTransactions,
@@ -206,12 +196,10 @@ const Reports = () => {
       cashCount,
       upiCount,
       cardCount,
-      totalProducts: products.length,
-      totalSuppliers: suppliers.length,
       topProducts,
       dailyStats,
       paymentBreakdown
-    });
+    }));
   };
 
   const getFilteredSales = () => {
@@ -227,8 +215,7 @@ const Reports = () => {
     if (search) {
       filtered = filtered.filter(sale =>
         sale.invoiceId?.toLowerCase().includes(search.toLowerCase()) ||
-        sale.customerName?.toLowerCase().includes(search.toLowerCase()) ||
-        sale.items?.some(item => item.productName?.toLowerCase().includes(search.toLowerCase()))
+        sale.customerName?.toLowerCase().includes(search.toLowerCase())
       );
     }
 
@@ -246,7 +233,6 @@ const Reports = () => {
         filtered.sort((a, b) => (a.total || 0) - (b.total || 0));
         break;
     }
-
     return filtered;
   };
 
@@ -254,7 +240,6 @@ const Reports = () => {
     let profit = 0;
     const productMap = new Map();
     products.forEach(p => productMap.set(p._id.toString(), p));
-    
     sale.items?.forEach(item => {
       const product = productMap.get(item.product?.toString());
       if (product) {
@@ -588,7 +573,7 @@ const Reports = () => {
                 <th className="px-3 py-2 text-left">Payment</th>
                 <th className="px-3 py-2 text-right">Revenue</th>
                 <th className="px-3 py-2 text-right">Profit</th>
-              </tr>
+               </tr>
             </thead>
             <tbody>
               {filteredSales.length > 0 ? filteredSales.map(sale => {
