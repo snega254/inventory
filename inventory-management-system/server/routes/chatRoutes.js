@@ -27,10 +27,15 @@ try {
 const getRealTimeStats = async () => {
   try {
     const productCount = await Product.countDocuments();
+    const products = await Product.find().select('name category sku');
+    
     const employeeCount = await User.countDocuments({ role: { $ne: 'admin' } });
     const adminCount = await User.countDocuments({ role: 'admin' });
+    const employees = await User.find().select('name email role isActive');
+    
     const supplierCount = await Supplier.countDocuments();
-    const userCount = await User.countDocuments(); // Total users/customers
+    const suppliers = await Supplier.find().select('name email phone');
+    
     const totalSales = await Sale.aggregate([{ $group: { _id: null, total: { $sum: '$total' } } }]);
     
     // Calculate profit
@@ -52,16 +57,38 @@ const getRealTimeStats = async () => {
       { $group: { _id: null, total: { $sum: '$total' } } }
     ]);
     
+    // Get low stock items
+    const lowStockItems = [];
+    const allProducts = await Product.find();
+    allProducts.forEach(p => {
+      p.colorVariants?.forEach(v => {
+        v.sizes?.forEach(s => {
+          if (s.quantity <= (s.minStock || 5)) {
+            lowStockItems.push({
+              product: p.name,
+              color: v.colorName,
+              size: s.size,
+              quantity: s.quantity,
+              minStock: s.minStock || 5
+            });
+          }
+        });
+      });
+    });
+    
     return {
       totalProducts: productCount,
+      products: products.map(p => ({ name: p.name, category: p.category, sku: p.sku })),
       totalEmployees: employeeCount,
       totalAdmins: adminCount,
+      employees: employees.map(e => ({ name: e.name, email: e.email, role: e.role, isActive: e.isActive })),
       totalSuppliers: supplierCount,
-      totalUsers: userCount,
+      suppliers: suppliers.map(s => ({ name: s.name, email: s.email, phone: s.phone })),
       totalRevenue: totalSales[0]?.total || 0,
       totalProfit: totalProfit,
       todaySales: todaySales,
-      todayRevenue: todayRevenue[0]?.total || 0
+      todayRevenue: todayRevenue[0]?.total || 0,
+      lowStockItems: lowStockItems
     };
   } catch (error) {
     console.error('Error fetching stats:', error);
@@ -84,27 +111,31 @@ router.post('/', async (req, res) => {
     console.log('📊 Real stats from DB:', {
       products: stats?.totalProducts,
       employees: stats?.totalEmployees,
-      users: stats?.totalUsers,
-      suppliers: stats?.totalSuppliers,
-      revenue: stats?.totalRevenue,
-      profit: stats?.totalProfit
+      suppliers: stats?.totalSuppliers
     });
 
-    // Create context with real data
+    // Create detailed context with real data
+    const productList = stats?.products?.map(p => p.name).join(', ') || 'No products';
+    const employeeList = stats?.employees?.map(e => `${e.name} (${e.role}${e.isActive ? '' : ' - Inactive'})`).join(', ') || 'No employees';
+    const supplierList = stats?.suppliers?.map(s => s.name).join(', ') || 'No suppliers';
+    const lowStockList = stats?.lowStockItems?.map(i => `${i.product} - ${i.color} ${i.size}: ${i.quantity} left`).join('; ') || 'No low stock items';
+
     const systemPrompt = `You are an AI assistant for "Attire Menswear" inventory system.
 
 CURRENT REAL DATA FROM DATABASE:
 - Total Products: ${stats?.totalProducts || 0}
+- Product Names: ${productList}
 - Total Employees: ${stats?.totalEmployees || 0}
 - Total Admins: ${stats?.totalAdmins || 0}
+- Employee Details: ${employeeList}
 - Total Suppliers: ${stats?.totalSuppliers || 0}
-- Total Users/Customers: ${stats?.totalUsers || 0}
+- Supplier Names: ${supplierList}
 - Total Revenue: ₹${(stats?.totalRevenue || 0).toLocaleString()}
 - Total Profit: ₹${(stats?.totalProfit || 0).toLocaleString()}
 - Sales Today: ${stats?.todaySales || 0}
-- Revenue Today: ₹${(stats?.todayRevenue || 0).toLocaleString()}
+- Low Stock Items: ${lowStockList}
 
-IMPORTANT: Use ONLY these numbers when answering questions about counts, products, employees, suppliers, etc. Do not make up numbers.`;
+IMPORTANT: Use ONLY these numbers and details when answering questions. If asked about specific products, employees, or suppliers, use the names from the data above. Be helpful and accurate.`;
 
     // Try Groq AI with real data
     if (groq) {
@@ -129,36 +160,33 @@ IMPORTANT: Use ONLY these numbers when answering questions about counts, product
       }
     }
 
-    // Fallback with real data
+    // Fallback with detailed real data
     let reply = '';
     const lowerMsg = message.toLowerCase();
     
-    if (lowerMsg.includes('product') && (lowerMsg.includes('count') || lowerMsg.includes('many') || lowerMsg.includes('total'))) {
-      reply = `We have ${stats?.totalProducts || 0} products in the inventory.`;
+    if (lowerMsg.includes('product') && (lowerMsg.includes('name') || lowerMsg.includes('list'))) {
+      reply = `Products in inventory: ${productList}`;
     } 
-    else if (lowerMsg.includes('employee') && (lowerMsg.includes('count') || lowerMsg.includes('many') || lowerMsg.includes('total'))) {
-      reply = `We have ${stats?.totalEmployees || 0} employees and ${stats?.totalAdmins || 0} admins.`;
+    else if (lowerMsg.includes('employee') && (lowerMsg.includes('name') || lowerMsg.includes('list') || lowerMsg.includes('who'))) {
+      reply = `Employees: ${employeeList}`;
     }
-    else if (lowerMsg.includes('customer') || (lowerMsg.includes('user') && lowerMsg.includes('count'))) {
-      reply = `We have ${stats?.totalUsers || 0} registered users in the system.`;
-    }
-    else if (lowerMsg.includes('supplier')) {
-      reply = `We have ${stats?.totalSuppliers || 0} suppliers in the system.`;
-    }
-    else if (lowerMsg.includes('revenue')) {
-      reply = `Total revenue is ₹${(stats?.totalRevenue || 0).toLocaleString()}. Today's revenue is ₹${(stats?.todayRevenue || 0).toLocaleString()}.`;
-    }
-    else if (lowerMsg.includes('profit')) {
-      reply = `Total profit is ₹${(stats?.totalProfit || 0).toLocaleString()}.`;
-    }
-    else if (lowerMsg.includes('today') && lowerMsg.includes('sale')) {
-      reply = `Today we had ${stats?.todaySales || 0} sales, totaling ₹${(stats?.todayRevenue || 0).toLocaleString()}.`;
+    else if (lowerMsg.includes('supplier') && (lowerMsg.includes('name') || lowerMsg.includes('list'))) {
+      reply = `Suppliers: ${supplierList}`;
     }
     else if (lowerMsg.includes('stock') || lowerMsg.includes('low stock')) {
-      reply = "Check low stock items on the Dashboard. Products below minimum threshold are highlighted in red.";
+      reply = lowStockList ? `Low stock items: ${lowStockList}` : 'No low stock items found.';
+    }
+    else if (lowerMsg.includes('product') && (lowerMsg.includes('count') || lowerMsg.includes('many') || lowerMsg.includes('total'))) {
+      reply = `We have ${stats?.totalProducts || 0} products: ${productList}`;
+    } 
+    else if (lowerMsg.includes('employee') && (lowerMsg.includes('count') || lowerMsg.includes('many') || lowerMsg.includes('total'))) {
+      reply = `We have ${stats?.totalEmployees || 0} employees and ${stats?.totalAdmins || 0} admins. ${employeeList}`;
+    }
+    else if (lowerMsg.includes('supplier')) {
+      reply = `We have ${stats?.totalSuppliers || 0} suppliers: ${supplierList}`;
     }
     else {
-      reply = `I can help you with inventory management. Current stats: ${stats?.totalProducts || 0} products, ${stats?.totalEmployees || 0} employees, ${stats?.totalSuppliers || 0} suppliers, and ₹${(stats?.totalRevenue || 0).toLocaleString()} total revenue. What would you like to know?`;
+      reply = `I can help you with inventory management. Current stats: ${stats?.totalProducts || 0} products, ${stats?.totalEmployees || 0} employees, ${stats?.totalSuppliers || 0} suppliers. Available products: ${productList}. Employees: ${employeeList}. What would you like to know?`;
     }
     
     console.log('💡 Using fallback with real data');
