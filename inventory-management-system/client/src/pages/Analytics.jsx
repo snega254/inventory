@@ -6,9 +6,7 @@ import {
   Package,
   IndianRupee,
   ShoppingBag,
-  Users,
   Calendar,
-  DollarSign,
   Activity
 } from 'lucide-react';
 import {
@@ -19,22 +17,23 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  PieChart as RePieChart,
+  PieChart,
   Pie,
   Cell,
   LineChart,
   Line,
   Legend
 } from 'recharts';
-import axios from 'axios';
-import toast from 'react-hot-toast';
 import API from '../services/api';
+import toast from 'react-hot-toast';
+
 const Analytics = () => {
   const [loading, setLoading] = useState(true);
   const [salesData, setSalesData] = useState([]);
   const [categoryData, setCategoryData] = useState([]);
   const [topProducts, setTopProducts] = useState([]);
   const [monthlyRevenue, setMonthlyRevenue] = useState([]);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [summary, setSummary] = useState({
     totalRevenue: 0,
     totalProfit: 0,
@@ -45,53 +44,38 @@ const Analytics = () => {
   });
 
   useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
     fetchAnalyticsData();
   }, []);
 
   const fetchAnalyticsData = async () => {
-  try {
-    // Fetch sales data - use API
-    const salesRes = await API.get('/sales');
-    
-    // Fetch products data - use API (not axios with localhost)
-    const productsRes = await API.get('/products');
+    try {
+      const salesRes = await API.get('/sales');
+      const productsRes = await API.get('/products');
+      processAnalyticsData(salesRes.data, productsRes.data);
+    } catch (error) {
+      toast.error('Failed to fetch analytics data');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const sales = salesRes.data;
-    const products = productsRes.data;
-
-    // Process data for analytics
-    processAnalyticsData(sales, products);
-  } catch (error) {
-    console.error('Analytics error:', error);
-    toast.error('Failed to fetch analytics data');
-  } finally {
-    setLoading(false);
-  }
-};
   const processAnalyticsData = (sales, products) => {
-    // Create product lookup map for profit calculation
     const productMap = new Map();
-    products.forEach(product => {
-      productMap.set(product._id.toString(), product);
-    });
+    products.forEach(p => productMap.set(p._id.toString(), p));
 
-    // Calculate summary with profit
-    let totalRevenue = 0;
-    let totalProfit = 0;
-    let totalItems = 0;
-
+    let totalRevenue = 0, totalProfit = 0;
     sales.forEach(sale => {
       totalRevenue += sale.total || 0;
-      
-      // Calculate profit for this sale
       sale.items?.forEach(item => {
         const product = productMap.get(item.product?.toString());
         if (product) {
-          const purchasePrice = product.purchasePrice || 0;
-          const sellingPrice = item.price || 0;
-          const quantity = item.quantity || 0;
-          totalProfit += (sellingPrice - purchasePrice) * quantity;
-          totalItems += quantity;
+          totalProfit += (item.price - (product.purchasePrice || 0)) * item.quantity;
         }
       });
     });
@@ -100,366 +84,143 @@ const Analytics = () => {
     const avgOrderValue = totalSales > 0 ? totalRevenue / totalSales : 0;
     const profitMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
-    setSummary({
-      totalRevenue,
-      totalProfit,
-      totalProducts: products.length,
-      totalSales,
-      avgOrderValue,
-      profitMargin
-    });
+    setSummary({ totalRevenue, totalProfit, totalProducts: products.length, totalSales, avgOrderValue, profitMargin });
 
-    // Process category distribution
     const categoryMap = new Map();
-    products.forEach(product => {
-      const category = product.category || 'Uncategorized';
-      const count = categoryMap.get(category) || 0;
-      categoryMap.set(category, count + 1);
+    products.forEach(p => {
+      const cat = p.category || 'Uncategorized';
+      categoryMap.set(cat, (categoryMap.get(cat) || 0) + 1);
     });
-    
-    const categoryData = Array.from(categoryMap.entries()).map(([name, value]) => ({
-      name,
-      value
-    }));
-    setCategoryData(categoryData);
+    setCategoryData(Array.from(categoryMap.entries()).map(([name, value]) => ({ name: name.length > 12 ? name.substring(0, 10) + '..' : name, value })));
 
-    // Process top products by profit
     const productProfitMap = new Map();
     sales.forEach(sale => {
       sale.items?.forEach(item => {
         const product = productMap.get(item.product?.toString());
         if (product) {
-          const productName = item.productName || 'Unknown';
-          const purchasePrice = product.purchasePrice || 0;
-          const sellingPrice = item.price || 0;
-          const quantity = item.quantity || 0;
-          const profit = (sellingPrice - purchasePrice) * quantity;
-          const revenue = sellingPrice * quantity;
-          
-          const existing = productProfitMap.get(productName) || { profit: 0, revenue: 0 };
-          productProfitMap.set(productName, {
-            profit: existing.profit + profit,
-            revenue: existing.revenue + revenue
-          });
+          const name = item.productName || 'Unknown';
+          const profit = (item.price - (product.purchasePrice || 0)) * item.quantity;
+          const existing = productProfitMap.get(name) || { profit: 0, revenue: 0 };
+          existing.profit += profit;
+          existing.revenue += item.price * item.quantity;
+          productProfitMap.set(name, existing);
         }
       });
     });
+    setTopProducts(Array.from(productProfitMap.entries()).map(([name, data]) => ({ name: name.length > 18 ? name.substring(0, 15) + '...' : name, profit: data.profit })).sort((a, b) => b.profit - a.profit).slice(0, 5));
 
-    const topProductsData = Array.from(productProfitMap.entries())
-      .map(([name, data]) => ({ 
-        name, 
-        profit: data.profit,
-        revenue: data.revenue 
-      }))
-      .sort((a, b) => b.profit - a.profit)
-      .slice(0, 5);
-    setTopProducts(topProductsData);
-
-    // Process monthly revenue with profit
     const monthlyMap = new Map();
     sales.forEach(sale => {
       const date = new Date(sale.createdAt);
-      const monthYear = `${date.toLocaleString('default', { month: 'short' })} ${date.getFullYear()}`;
-      
-      let saleProfit = 0;
-      sale.items?.forEach(item => {
-        const product = productMap.get(item.product?.toString());
-        if (product) {
-          const purchasePrice = product.purchasePrice || 0;
-          const sellingPrice = item.price || 0;
-          const quantity = item.quantity || 0;
-          saleProfit += (sellingPrice - purchasePrice) * quantity;
-        }
-      });
-
-      const existing = monthlyMap.get(monthYear) || { revenue: 0, profit: 0 };
-      monthlyMap.set(monthYear, {
-        revenue: existing.revenue + (sale.total || 0),
-        profit: existing.profit + saleProfit
-      });
+      const month = `${date.toLocaleString('default', { month: 'short' })} ${date.getFullYear()}`;
+      const existing = monthlyMap.get(month) || { revenue: 0, profit: 0 };
+      existing.revenue += sale.total || 0;
+      monthlyMap.set(month, existing);
     });
+    setMonthlyRevenue(Array.from(monthlyMap.entries()).map(([month, data]) => ({ month, revenue: data.revenue })).sort((a, b) => new Date(a.month) - new Date(b.month)));
 
-    const monthlyData = Array.from(monthlyMap.entries())
-      .map(([month, data]) => ({ 
-        month, 
-        revenue: data.revenue,
-        profit: data.profit
-      }))
-      .sort((a, b) => {
-        const dateA = new Date(a.month);
-        const dateB = new Date(b.month);
-        return dateA - dateB;
-      });
-    setMonthlyRevenue(monthlyData);
-
-    // Process sales performance by day (last 30 days)
-    const last30Days = [];
-    for (let i = 29; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      last30Days.push(date.toISOString().split('T')[0]);
-    }
-
-    const dailySales = last30Days.map(date => {
-      const daySales = sales.filter(sale => 
-        sale.createdAt?.split('T')[0] === date
-      );
-      
-      let dayRevenue = 0;
-      let dayProfit = 0;
-      
-      daySales.forEach(sale => {
-        dayRevenue += sale.total || 0;
-        sale.items?.forEach(item => {
-          const product = productMap.get(item.product?.toString());
-          if (product) {
-            const purchasePrice = product.purchasePrice || 0;
-            const sellingPrice = item.price || 0;
-            const quantity = item.quantity || 0;
-            dayProfit += (sellingPrice - purchasePrice) * quantity;
-          }
-        });
-      });
-      
-      return {
-        date,
-        displayDate: new Date(date).toLocaleDateString('en-IN', { 
-          day: '2-digit', 
-          month: 'short'
-        }),
-        revenue: dayRevenue,
-        profit: dayProfit
-      };
+    const dailyMap = new Map();
+    sales.forEach(sale => {
+      const date = new Date(sale.createdAt).toISOString().split('T')[0];
+      const display = new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+      const existing = dailyMap.get(date) || { date: display, revenue: 0, profit: 0 };
+      existing.revenue += sale.total || 0;
+      dailyMap.set(date, existing);
     });
-    setSalesData(dailySales);
+    setSalesData(Array.from(dailyMap.values()).slice(-30));
   };
 
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+  const formatCurrency = (v) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(v);
 
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(value);
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-      </div>
-    );
-  }
+  if (loading) return <div className="flex justify-center h-64"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div></div>;
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="space-y-6"
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-800">Analytics Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-1">Last 30 days performance</p>
-        </div>
-        <div className="flex items-center space-x-2 text-sm bg-blue-50 px-3 py-1 rounded-full">
-          <Calendar size={16} className="text-blue-600" />
-          <span className="text-blue-600 font-medium">Last 30 Days</span>
-        </div>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between gap-3">
+        <div><h1 className="text-xl sm:text-2xl font-semibold">Analytics Dashboard</h1><p className="text-xs sm:text-sm text-gray-500">Last 30 days performance</p></div>
+        <div className="flex items-center gap-2 text-xs sm:text-sm bg-blue-50 px-2 sm:px-3 py-1 rounded-full"><Calendar size={14} className="text-blue-600" /><span className="text-blue-600 font-medium">Last 30 Days</span></div>
       </div>
 
-      {/* Sales Performance Chart */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-        className="bg-white rounded-xl shadow-lg p-6"
-      >
-        <h2 className="text-lg font-semibold mb-4">Revenue & Profit Trend</h2>
-        <div className="h-80">
+      <div className="bg-white rounded-xl shadow-lg p-3 sm:p-6">
+        <h2 className="text-base sm:text-lg font-semibold mb-3">Revenue & Profit Trend</h2>
+        <div className="h-64 sm:h-80">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={salesData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis 
-                dataKey="displayDate" 
-                tick={{ fontSize: 12 }}
-                interval={Math.floor(salesData.length / 8)}
-              />
-              <YAxis yAxisId="left" orientation="left" stroke="#3b82f6" />
-              <YAxis yAxisId="right" orientation="right" stroke="#10b981" />
-              <Tooltip 
-                formatter={(value, name) => [
-                  formatCurrency(value), 
-                  name === 'revenue' ? 'Revenue' : 'Profit'
-                ]}
-                labelFormatter={(label) => `Date: ${label}`}
-              />
-              <Legend />
-              <Line 
-                yAxisId="left"
-                type="monotone" 
-                dataKey="revenue" 
-                stroke="#3b82f6" 
-                strokeWidth={2}
-                dot={false}
-                name="Revenue"
-              />
-              <Line 
-                yAxisId="right"
-                type="monotone" 
-                dataKey="profit" 
-                stroke="#10b981" 
-                strokeWidth={2}
-                dot={false}
-                name="Profit"
-              />
+            <LineChart data={salesData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" tick={{ fontSize: isMobile ? 9 : 12 }} interval={isMobile ? Math.floor(salesData.length / 5) : Math.floor(salesData.length / 8)} />
+              <YAxis tick={{ fontSize: isMobile ? 9 : 12 }} tickFormatter={(v) => isMobile && v > 1000 ? `${v/1000}k` : v} />
+              <Tooltip formatter={(v) => formatCurrency(v)} />
+              <Legend wrapperStyle={{ fontSize: isMobile ? 10 : 12 }} />
+              <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} dot={false} name="Revenue" />
+              <Line type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={2} dot={false} name="Profit" />
             </LineChart>
           </ResponsiveContainer>
         </div>
-      </motion.div>
+      </div>
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Monthly Revenue */}
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.6 }}
-          className="bg-white rounded-xl shadow-lg p-6"
-        >
-          <h2 className="text-lg font-semibold mb-4">Monthly Revenue</h2>
-          <div className="h-64">
+      <div className="grid grid-cols-1 gap-4">
+        <div className="bg-white rounded-xl shadow-lg p-3 sm:p-6">
+          <h2 className="text-base sm:text-lg font-semibold mb-3">Monthly Revenue</h2>
+          <div className="h-56 sm:h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyRevenue}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                <YAxis />
-                <Tooltip formatter={(value) => formatCurrency(value)} />
+              <BarChart data={monthlyRevenue} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" tick={{ fontSize: isMobile ? 10 : 12 }} angle={isMobile ? -45 : 0} textAnchor={isMobile ? "end" : "middle"} height={isMobile ? 50 : 30} />
+                <YAxis tick={{ fontSize: isMobile ? 9 : 12 }} tickFormatter={(v) => isMobile && v > 1000 ? `${v/1000}k` : v} />
+                <Tooltip formatter={(v) => formatCurrency(v)} />
                 <Bar dataKey="revenue" fill="#3b82f6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </motion.div>
+        </div>
 
-        {/* Category Distribution */}
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.7 }}
-          className="bg-white rounded-xl shadow-lg p-6"
-        >
-          <h2 className="text-lg font-semibold mb-4">Category Distribution</h2>
-          <div className="h-64">
+        <div className="bg-white rounded-xl shadow-lg p-3 sm:p-6">
+          <h2 className="text-base sm:text-lg font-semibold mb-3">Category Distribution</h2>
+          <div className="h-56 sm:h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <RePieChart>
-                <Pie
-                  data={categoryData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {categoryData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
+              <PieChart>
+                <Pie data={categoryData} cx="50%" cy="50%" labelLine={!isMobile} label={isMobile ? false : ({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`} outerRadius={isMobile ? 60 : 80} dataKey="value">
+                  {categoryData.map((e, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
                 <Tooltip />
-              </RePieChart>
+                {isMobile && <Legend wrapperStyle={{ fontSize: 10 }} />}
+              </PieChart>
             </ResponsiveContainer>
           </div>
-        </motion.div>
+        </div>
 
-        {/* Top Products by Profit */}
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.8 }}
-          className="bg-white rounded-xl shadow-lg p-6"
-        >
-          <h2 className="text-lg font-semibold mb-4">Top Products by Profit</h2>
-          <div className="h-64">
+        <div className="bg-white rounded-xl shadow-lg p-3 sm:p-6">
+          <h2 className="text-base sm:text-lg font-semibold mb-3">Top Products by Profit</h2>
+          <div className="h-56 sm:h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={topProducts}
-                layout="vertical"
-                margin={{ left: 80, right: 20 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis type="number" />
-                <YAxis 
-                  type="category" 
-                  dataKey="name" 
-                  width={80}
-                  tick={{ fontSize: 12 }}
-                />
-                <Tooltip 
-                  formatter={(value) => formatCurrency(value)}
-                  cursor={{ fill: '#f0f0f0' }}
-                />
+              <BarChart data={topProducts} layout="vertical" margin={{ left: isMobile ? 60 : 80, right: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" tickFormatter={(v) => isMobile && v > 1000 ? `${v/1000}k` : v} />
+                <YAxis type="category" dataKey="name" width={isMobile ? 60 : 80} tick={{ fontSize: isMobile ? 9 : 12 }} />
+                <Tooltip formatter={(v) => formatCurrency(v)} />
                 <Bar dataKey="profit" fill="#10b981" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </motion.div>
+        </div>
 
-        {/* Key Metrics */}
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.9 }}
-          className="bg-white rounded-xl shadow-lg p-6"
-        >
-          <h2 className="text-lg font-semibold mb-4">Key Metrics</h2>
-          <div className="space-y-4">
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <Activity className="text-blue-600" size={20} />
-                  <span className="text-gray-600">Average Daily Sales</span>
-                </div>
-                <span className="font-semibold">{formatCurrency(summary.totalRevenue / 30)}</span>
+        <div className="bg-white rounded-xl shadow-lg p-3 sm:p-6">
+          <h2 className="text-base sm:text-lg font-semibold mb-3">Key Metrics</h2>
+          <div className="grid grid-cols-2 gap-2 sm:gap-4">
+            {[
+              { icon: Activity, color: 'blue', label: 'Avg Daily Sales', value: formatCurrency(summary.totalRevenue / 30) },
+              { icon: TrendingUp, color: 'green', label: 'Profit Margin', value: `${summary.profitMargin.toFixed(1)}%` },
+              { icon: ShoppingBag, color: 'purple', label: 'Avg Order', value: formatCurrency(summary.avgOrderValue) },
+              { icon: Package, color: 'orange', label: 'Products', value: summary.totalProducts }
+            ].map((item, i) => (
+              <div key={i} className="bg-gray-50 p-2 sm:p-4 rounded-lg">
+                <div className="flex items-center gap-2"><item.icon className={`text-${item.color}-600`} size={isMobile ? 14 : 20} /><span className="text-xs sm:text-sm text-gray-600">{item.label}</span></div>
+                <p className="text-xs sm:text-base font-semibold mt-1">{item.value}</p>
               </div>
-            </div>
-
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <TrendingUp className="text-green-600" size={20} />
-                  <span className="text-gray-600">Profit Margin</span>
-                </div>
-                <span className="font-semibold text-green-600">{summary.profitMargin.toFixed(1)}%</span>
-              </div>
-            </div>
-
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <ShoppingBag className="text-purple-600" size={20} />
-                  <span className="text-gray-600">Peak Sales Day</span>
-                </div>
-                <span className="font-semibold">
-                  {formatCurrency(Math.max(...salesData.map(d => d.revenue)))}
-                </span>
-              </div>
-            </div>
-
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <Package className="text-orange-600" size={20} />
-                  <span className="text-gray-600">Categories</span>
-                </div>
-                <span className="font-semibold">{categoryData.length}</span>
-              </div>
-            </div>
+            ))}
           </div>
-        </motion.div>
+        </div>
       </div>
     </motion.div>
   );
