@@ -1,23 +1,26 @@
 import express from 'express';
-import { protect } from '../middleware/auth.js';
-import { aiRoleBasedChat } from '../controllers/aiRoleBasedChatController.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import Groq from 'groq-sdk';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
 const router = express.Router();
 
-// Initialize Gemini if API key exists
-let genAI = null;
-if (process.env.GEMINI_API_KEY) {
-  genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  console.log('🤖 Gemini AI initialized');
+// Initialize Groq with API key
+let groq = null;
+if (process.env.GROQ_API_KEY) {
+  try {
+    groq = new Groq({
+      apiKey: process.env.GROQ_API_KEY,
+    });
+    console.log('🤖 Groq AI initialized');
+  } catch (error) {
+    console.log('⚠️ Groq initialization failed:', error.message);
+  }
 }
 
 // Inventory context for better responses
-const inventoryContext = `
-You are an AI assistant for an inventory management system called "Attire Menswear". You help with:
+const inventoryContext = `You are an AI assistant for an inventory management system called "Attire Menswear". You help with:
 - Adding and managing products (with colors, sizes, variants)
 - Checking stock levels and low stock alerts
 - Managing suppliers and their categories
@@ -32,10 +35,11 @@ Key Features:
 - Each size has quantity and minimum stock threshold
 - Suppliers provide specific categories of products
 - Different user roles have different permissions
-`;
 
-// Main chat endpoint with AI fallback
-router.post('/', protect, async (req, res) => {
+Keep responses concise, helpful, and focused on inventory management tasks.`;
+
+// Main chat endpoint
+router.post('/', async (req, res) => {
   try {
     const { message } = req.body;
     
@@ -47,37 +51,36 @@ router.post('/', protect, async (req, res) => {
     }
 
     console.log(`💬 User message: ${message}`);
-    console.log(`👤 User role: ${req.user?.role}`);
 
-    // Try role-based AI chat first (if implemented)
-    if (typeof aiRoleBasedChat === 'function') {
+    // Try Groq AI
+    if (groq) {
       try {
-        const response = await aiRoleBasedChat(req, res);
-        if (response) return;
-      } catch (error) {
-        console.log('Role-based chat failed, falling back to Gemini');
-      }
-    }
+        const completion = await groq.chat.completions.create({
+          messages: [
+            {
+              role: "system",
+              content: inventoryContext
+            },
+            {
+              role: "user",
+              content: message
+            }
+          ],
+          model: "mixtral-8x7b-32768",
+          temperature: 0.7,
+          max_tokens: 500,
+        });
 
-    // Try Gemini AI
-    if (genAI) {
-      try {
-        const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+        const reply = completion.choices[0]?.message?.content || "I'm here to help!";
         
-        const prompt = `${inventoryContext}\n\nUser Role: ${req.user?.role || 'user'}\nUser Question: ${message}\n\nProvide a helpful, concise, and actionable response about inventory management. Include specific steps if applicable.`;
-        
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
-        
-        console.log('🤖 Gemini response sent');
+        console.log('🤖 Groq response sent');
         return res.json({ 
           success: true,
-          reply: text,
-          source: 'gemini'
+          reply: reply,
+          source: 'groq'
         });
       } catch (error) {
-        console.error('Gemini error:', error);
+        console.error('Groq error:', error);
       }
     }
 
@@ -126,7 +129,7 @@ router.post('/', protect, async (req, res) => {
 });
 
 // Quick suggestions endpoint
-router.get('/suggestions', protect, (req, res) => {
+router.get('/suggestions', (req, res) => {
   const suggestions = [
     { text: 'How to add a product?', category: 'products' },
     { text: 'Check low stock items', category: 'inventory' },
@@ -138,21 +141,7 @@ router.get('/suggestions', protect, (req, res) => {
     { text: 'Check today\'s sales', category: 'sales' }
   ];
   
-  // Filter suggestions based on user role
-  const userRole = req.user?.role;
-  let filteredSuggestions = suggestions;
-  
-  if (userRole === 'cashier') {
-    filteredSuggestions = suggestions.filter(s => 
-      s.category !== 'reports' && s.category !== 'employees'
-    );
-  } else if (userRole === 'inventory_clerk') {
-    filteredSuggestions = suggestions.filter(s => 
-      s.category !== 'billing' && s.category !== 'reports'
-    );
-  }
-  
-  res.json({ suggestions: filteredSuggestions });
+  res.json({ suggestions: suggestions });
 });
 
 export default router;
