@@ -27,13 +27,15 @@ try {
 
 // System prompt for inventory management
 const systemPrompt = `You are an AI assistant for "Attire Menswear" inventory management system.
-You have access to real-time data about products, stock, suppliers, sales, and employees.
-Answer questions accurately and concisely based on the user's query.
+You help with:
+- Products and inventory management
+- Stock levels and low stock alerts
+- Supplier management
+- Sales reports and analytics
+- Billing and sales transactions
+- Employee management
 
-Important: When asked about counts like "how many products", you should provide the actual number if available.
-If you don't have the exact number, say you don't know but offer to help with other questions.
-
-Be helpful, friendly, and focused on inventory management.`;
+Answer questions accurately, concisely, and helpfully. When asked about counts like "how many products", provide helpful guidance.`;
 
 router.post('/', async (req, res) => {
   try {
@@ -47,19 +49,18 @@ router.post('/', async (req, res) => {
     }
 
     console.log('💬 User message:', message);
-    console.log('Groq status:', groq ? 'Initialized' : 'Not initialized', groqError || '');
 
-    // Try Groq AI first
+    // Try Groq AI with updated model
     if (groq) {
       try {
-        console.log('Attempting Groq API call...');
+        console.log('Attempting Groq API call with llama-3.3-70b-versatile...');
         
         const completion = await groq.chat.completions.create({
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: message }
           ],
-          model: "mixtral-8x7b-32768",
+          model: "llama-3.3-70b-versatile",  // Updated model
           temperature: 0.7,
           max_tokens: 500,
         });
@@ -67,50 +68,42 @@ router.post('/', async (req, res) => {
         const reply = completion.choices[0]?.message?.content;
         
         if (reply) {
-          console.log('🤖 Groq response received, length:', reply.length);
+          console.log('🤖 Groq response received');
           return res.json({ 
             success: true,
             reply: reply,
             source: 'groq'
           });
-        } else {
-          console.log('Groq returned empty response');
         }
       } catch (groqError) {
-        console.error('Groq API error details:', groqError.message);
-        if (groqError.response) {
-          console.error('Status:', groqError.response.status);
-          console.error('Data:', JSON.stringify(groqError.response.data));
-        }
+        console.error('Groq API error:', groqError.message);
       }
-    } else {
-      console.log('Groq not available, using fallback');
     }
 
-    // Smart fallback with more helpful responses
+    // Smart fallback responses
     const lowerMsg = message.toLowerCase();
     let reply = '';
     
     if (lowerMsg.includes('product') && (lowerMsg.includes('count') || lowerMsg.includes('many') || lowerMsg.includes('total'))) {
-      reply = "I don't have access to the current product count at this moment. Please check the Inventory page for the exact number.";
+      reply = "You can view total products in the Inventory section. Go to Inventory to see the complete list and count.";
     } 
     else if (lowerMsg.includes('stock') || lowerMsg.includes('low stock')) {
-      reply = "You can check low stock items on the Dashboard. Products below minimum threshold are highlighted in red.";
+      reply = "Check low stock items on the Dashboard. Products below minimum threshold are highlighted in red. You can also filter by low stock in Inventory.";
     }
     else if (lowerMsg.includes('supplier')) {
-      reply = "Manage suppliers in the Suppliers section. You can add, edit, or deactivate suppliers there.";
+      reply = "Manage suppliers in the Suppliers section. You can add, edit, view details, and deactivate suppliers there.";
     }
     else if (lowerMsg.includes('report')) {
-      reply = "Generate reports in the Reports section. You can filter by date and export as PDF or CSV.";
+      reply = "Generate reports in the Reports section. Filter by date range, payment method, and export as PDF or CSV.";
     }
     else if (lowerMsg.includes('bill') || lowerMsg.includes('billing')) {
-      reply = "For billing, go to Billing section. Search products, add to cart, enter customer details, and generate bill.";
+      reply = "For billing:\n1. Go to Billing section\n2. Search products\n3. Add to cart with color/size\n4. Enter customer details\n5. Select payment method\n6. Generate bill & download PDF";
     }
     else if (lowerMsg.includes('employee')) {
-      reply = "Manage employees in Employees section. Admin only. You can add, edit, or deactivate employees.";
+      reply = "Manage employees in Employees section (Admin only). Add, edit, reset passwords, or deactivate employees.";
     }
     else if (lowerMsg.includes('help')) {
-      reply = "I can help you with:\n• Products and inventory\n• Stock levels\n• Suppliers\n• Reports\n• Billing\n• Employees\n\nWhat would you like to know?";
+      reply = "I can help you with:\n• Products & Inventory\n• Stock levels & alerts\n• Suppliers\n• Sales Reports\n• Billing\n• Employees\n\nWhat would you like to know?";
     }
     else {
       reply = "I'm your inventory assistant. I can help with products, stock, suppliers, reports, billing, and employees. What would you like to know?";
@@ -127,7 +120,7 @@ router.post('/', async (req, res) => {
     console.error('Chat error:', error);
     res.status(500).json({ 
       success: false,
-      reply: 'Sorry, I\'m having trouble processing your request. Please try again.'
+      reply: 'Sorry, having trouble. Please try again.'
     });
   }
 });
