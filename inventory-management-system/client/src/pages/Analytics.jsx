@@ -8,7 +8,6 @@ import {
   ShoppingBag,
   Calendar,
   Activity,
-  Users,
   CreditCard,
   DollarSign,
   AlertTriangle
@@ -28,9 +27,7 @@ import {
   Line,
   AreaChart,
   Area,
-  Legend,
-  RadialBarChart,
-  RadialBar
+  Legend
 } from 'recharts';
 import API from '../services/api';
 import toast from 'react-hot-toast';
@@ -53,7 +50,6 @@ const Analytics = () => {
     totalSales: 0,
     avgOrderValue: 0,
     profitMargin: 0,
-    totalCustomers: 0,
     lowStockItems: 0
   });
 
@@ -72,14 +68,12 @@ const Analytics = () => {
       const salesRes = await API.get('/sales');
       const productsRes = await API.get('/products');
       const suppliersRes = await API.get('/suppliers');
-      const usersRes = await API.get('/users');
 
       const sales = salesRes.data;
       const products = productsRes.data;
       const suppliers = Array.isArray(suppliersRes.data) ? suppliersRes.data : suppliersRes.data.suppliers || [];
-      const users = usersRes.data;
 
-      processAnalyticsData(sales, products, suppliers, users);
+      processAnalyticsData(sales, products, suppliers);
     } catch (error) {
       console.error('Analytics error:', error);
       toast.error('Failed to fetch analytics data');
@@ -88,7 +82,7 @@ const Analytics = () => {
     }
   };
 
-  const processAnalyticsData = (sales, products, suppliers, users) => {
+  const processAnalyticsData = (sales, products, suppliers) => {
     const productMap = new Map();
     products.forEach(p => productMap.set(p._id.toString(), p));
 
@@ -126,7 +120,6 @@ const Analytics = () => {
       totalSales,
       avgOrderValue,
       profitMargin,
-      totalCustomers: users.length,
       lowStockItems: lowStock
     });
 
@@ -267,7 +260,7 @@ const Analytics = () => {
         </div>
       </div>
 
-      {/* Summary Cards */}
+      {/* Summary Cards - 4 cards only */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-3 text-white">
           <p className="text-xs opacity-80">Total Revenue</p>
@@ -475,10 +468,6 @@ const Analytics = () => {
         <div className="bg-white rounded-xl shadow-lg p-3 sm:p-6">
           <h2 className="text-base sm:text-lg font-semibold mb-3">Quick Statistics</h2>
           <div className="space-y-3">
-            <div className="flex justify-between items-center py-2 border-b">
-              <div className="flex items-center gap-2"><Users size={16} className="text-blue-500" /><span>Total Customers</span></div>
-              <span className="font-semibold">{summary.totalCustomers}</span>
-            </div>
             <div className="flex justify-between items-center py-2 border-b">
               <div className="flex items-center gap-2"><Package size={16} className="text-green-500" /><span>Total Products</span></div>
               <span className="font-semibold">{summary.totalProducts}</span>
