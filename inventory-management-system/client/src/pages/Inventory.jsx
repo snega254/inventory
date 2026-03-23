@@ -6,12 +6,9 @@ import {
   Plus,
   Edit,
   Trash2,
-  Filter,
   Package,
-  Image as ImageIcon,
   ChevronRight
 } from 'lucide-react';
-import axios from 'axios';
 import toast from 'react-hot-toast';
 import ProductModal from '../components/ProductModal';
 
@@ -31,25 +28,12 @@ const Inventory = () => {
     fetchSuppliers();
   }, []);
 
-  // Debug log to check image URLs
-  useEffect(() => {
-    if (products.length > 0) {
-      console.log('Products with images:', products.map(p => ({
-        name: p.name,
-        images: p.colorVariants?.map(v => ({
-          color: v.colorName,
-          images: v.images
-        }))
-      })));
-    }
-  }, [products]);
-
   const fetchProducts = async () => {
     try {
-      const token = localStorage.getItem('token');
       const { data } = await API.get('/products');
       setProducts(data);
     } catch (error) {
+      console.error('Fetch products error:', error);
       toast.error('Failed to fetch products');
     } finally {
       setLoading(false);
@@ -58,11 +42,7 @@ const Inventory = () => {
 
   const fetchSuppliers = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const { data } = await axios.get('http://localhost:5000/api/suppliers', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
+      const { data } = await API.get('/suppliers');
       if (Array.isArray(data)) {
         setSuppliers(data);
       } else if (data.suppliers) {
@@ -77,19 +57,30 @@ const Inventory = () => {
     if (!confirm('Are you sure you want to delete this product?')) return;
 
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`http://localhost:5000/api/products/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await API.delete(`/products/${id}`);
       toast.success('Product deleted successfully');
-      fetchProducts();
+      fetchProducts(); // Refresh the list
     } catch (error) {
-      toast.error('Failed to delete product');
+      console.error('Delete error:', error);
+      toast.error(error.response?.data?.message || 'Failed to delete product');
     }
   };
 
   const handleImageError = (productId) => {
     setImageErrors(prev => ({ ...prev, [productId]: true }));
+  };
+
+  // Get image URL with proper backend URL
+  const getImageUrl = (imagePath) => {
+    if (!imagePath) return null;
+    
+    // If it's a full URL, use it directly
+    if (imagePath.startsWith('http')) {
+      return imagePath;
+    }
+    
+    // If it's a local path, use backend URL
+    return `https://inventory-management-api-fxqc.onrender.com${imagePath}`;
   };
 
   // Get first available product image
@@ -257,18 +248,14 @@ const Inventory = () => {
                       <div className="w-full sm:w-32 h-32 bg-gray-100 flex-shrink-0">
                         {productImage && !hasImageError ? (
                           <img
-                            src={productImage}
+                            src={getImageUrl(productImage)}
                             alt={product.name}
                             className="w-full h-full object-cover"
                             onError={() => handleImageError(product._id)}
                           />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center bg-gray-50">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                              <rect width="24" height="24" fill="#e5e7eb"/>
-                              <path d="M4 16L8 12L12 16L20 8" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round"/>
-                              <circle cx="18" cy="8" r="1" fill="#9ca3af"/>
-                            </svg>
+                            <Package size={32} className="text-gray-400" />
                           </div>
                         )}
                       </div>
